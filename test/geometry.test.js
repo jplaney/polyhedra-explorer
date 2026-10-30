@@ -24,8 +24,26 @@ const EXPECTED = {
   snubDodecahedron: [60, 150, { 3: 80, 5: 12 }, 2.1558],
 };
 
-test('catalogue covers the 5 Platonic and 13 Archimedean solids', () => {
+// Prisms: 2n vertices, 3n edges, two n-gons and n squares.
+// Antiprisms: 2n vertices, 4n edges, two n-gons and 2n triangles.
+for (const n of [3, 5, 6, 8, 10]) {
+  const r = 1 / (2 * Math.sin(Math.PI / n));
+  EXPECTED[`prism${n}`] = [2 * n, 3 * n, { [n]: 2, 4: n }, Math.sqrt(r * r + 0.25)];
+}
+for (const n of [4, 5, 6, 8, 10]) {
+  const r = 1 / (2 * Math.sin(Math.PI / n));
+  const chord = 2 * r * Math.sin(Math.PI / (2 * n));
+  EXPECTED[`antiprism${n}`] = [2 * n, 4 * n, { [n]: 2, 3: 2 * n }, Math.sqrt(r * r + (1 - chord * chord) / 4)];
+}
+
+test('catalogue covers the Platonic and Archimedean solids, prisms and antiprisms', () => {
   assert.deepEqual(Object.keys(SOLIDS).sort(), Object.keys(EXPECTED).sort());
+  const families = (f) => Object.values(SOLIDS).filter((s) => s.family === f).length;
+  assert.deepEqual(['Platonic', 'Archimedean', 'Prisms', 'Antiprisms'].map(families), [5, 13, 5, 5]);
+});
+
+test('the pentagonal antiprism is the middle band of the icosahedron', () => {
+  assert.ok(Math.abs(buildSolid('antiprism5').circumradius - buildSolid('icosahedron').circumradius) < 1e-12);
 });
 
 for (const [key, [V, E, faces, R]] of Object.entries(EXPECTED)) {
@@ -70,4 +88,7 @@ test('vertex configurations', async () => {
   assert.equal(config('snubCube'), '3.3.3.3.4');
   assert.equal(config('truncatedIcosidodecahedron'), '4.6.10');
   assert.equal(config('icosidodecahedron'), '3.5.3.5');
+  assert.equal(config('prism3'), '3.4.4');
+  assert.equal(config('prism8'), '4.4.8');
+  assert.equal(config('antiprism10'), '3.3.3.10');
 });

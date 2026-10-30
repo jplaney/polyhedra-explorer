@@ -237,6 +237,54 @@ export const SOLIDS = {
   },
 };
 
+// Prisms and antiprisms: two regular n-gons on the z axis, joined by squares
+// (prism) or, with one n-gon turned by half a step, by triangles (antiprism).
+// The square prism is the cube and the triangular antiprism the octahedron,
+// so those two are left out.
+const circumradius = (n) => 1 / (2 * Math.sin(Math.PI / n));
+
+function prismVertices(n) {
+  const r = circumradius(n);
+  const pts = [];
+  for (let k = 0; k < n; k++) {
+    const a = (2 * Math.PI * k) / n;
+    pts.push([r * Math.cos(a), r * Math.sin(a), 0.5], [r * Math.cos(a), r * Math.sin(a), -0.5]);
+  }
+  return pts;
+}
+
+function antiprismVertices(n) {
+  const r = circumradius(n);
+  // A side edge spans a horizontal chord over pi/n plus the height.
+  const chord = 2 * r * Math.sin(Math.PI / (2 * n));
+  const h = Math.sqrt(1 - chord * chord);
+  const pts = [];
+  for (let k = 0; k < n; k++) {
+    const a = (2 * Math.PI * k) / n;
+    const b = a + Math.PI / n;
+    pts.push([r * Math.cos(a), r * Math.sin(a), h / 2], [r * Math.cos(b), r * Math.sin(b), -h / 2]);
+  }
+  return pts;
+}
+
+const POLYGON_ADJECTIVES = {
+  3: 'Triangular', 4: 'Square', 5: 'Pentagonal', 6: 'Hexagonal', 8: 'Octagonal', 10: 'Decagonal',
+};
+
+for (const n of [3, 5, 6, 8, 10])
+  SOLIDS[`prism${n}`] = { name: `${POLYGON_ADJECTIVES[n]} prism`, family: 'Prisms', vertices: () => prismVertices(n) };
+for (const n of [4, 5, 6, 8, 10])
+  SOLIDS[`antiprism${n}`] = {
+    name: `${POLYGON_ADJECTIVES[n]} antiprism`, family: 'Antiprisms', vertices: () => antiprismVertices(n),
+  };
+
+export const FAMILIES = [
+  { name: 'Platonic' },
+  { name: 'Archimedean' },
+  { name: 'Prisms', note: 'The square prism is the cube.' },
+  { name: 'Antiprisms', note: 'The triangular antiprism is the octahedron.' },
+];
+
 export const POLYGON_NAMES = {
   3: 'triangle', 4: 'square', 5: 'pentagon', 6: 'hexagon', 8: 'octagon', 10: 'decagon',
 };

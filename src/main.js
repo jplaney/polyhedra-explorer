@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { SOLIDS, POLYGON_NAMES, buildSolid, describeFaces, vertexConfiguration } from './geometry.js';
+import { SOLIDS, FAMILIES, POLYGON_NAMES, buildSolid, describeFaces, vertexConfiguration } from './geometry.js';
 import { IDENTITY, makeInstance, snapOptions, SpatialIndex, grow, faceVertices } from './snap.js';
 
 const MAX_SOLIDS = 1500;
@@ -418,9 +418,16 @@ function toast(msg) {
 const ORDER = Object.keys(SOLIDS);
 
 function buildPicker() {
-  for (const family of ['Platonic', 'Archimedean']) {
-    const list = $(`#picker-${family.toLowerCase()}`);
-    for (const key of ORDER.filter((k) => SOLIDS[k].family === family)) {
+  const root = $('#picker');
+  for (const { name, note } of FAMILIES) {
+    const heading = document.createElement('p');
+    heading.className = 'family';
+    heading.textContent = name;
+    if (note) heading.insertAdjacentHTML('beforeend', ` <span>${note}</span>`);
+    const list = document.createElement('div');
+    list.className = 'picker';
+    root.append(heading, list);
+    for (const key of ORDER.filter((k) => SOLIDS[k].family === name)) {
       const s = buildSolid(key);
       const btn = document.createElement('button');
       btn.type = 'button';

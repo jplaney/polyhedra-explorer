@@ -18,7 +18,9 @@ or `python3 -m http.server` and open `index.html`.
 ## Using it
 
 - **Pick a solid** in the side panel: all 5 Platonic and 13 Archimedean solids,
-  listed with their vertex configuration (e.g. `5.6.6` for the truncated
+  plus prisms and antiprisms on triangles through decagons (the square prism
+  is the cube and the triangular antiprism the octahedron, so they're listed
+  once), each listed with their vertex configuration (e.g. `5.6.6` for the truncated
   icosahedron). The card at the top spins a preview of the selected solid;
   hover any entry to preview it without selecting it.
 - **Hover a face** of any solid in the scene to preview the selected solid
@@ -32,8 +34,8 @@ or `python3 -m http.server` and open `index.html`.
   repeating for N generations and skipping copies that would overlap:
   - *Mirror across face* reflects the solid through the shared face.
   - *Slide opposite face over* translates the solid so its parallel opposite
-    face lands on the shared face. Cubes or truncated octahedra across all faces
-    tile space this way.
+    face lands on the shared face. Cubes, truncated octahedra or hexagonal
+    prisms across all faces tile space this way.
 
 Faces are coloured by polygon type: triangles amber, squares red, pentagons
 blue, hexagons green, octagons violet, decagons orange. The scene is saved in
@@ -41,7 +43,7 @@ the browser's local storage.
 
 ## Code
 
-- `src/geometry.js`: vertex recipes for the 18 solids (the snubs are solved
+- `src/geometry.js`: vertex recipes for the 28 solids (the snubs are solved
   numerically), a hull pass that recovers the polygonal faces, and vertex
   configurations. No dependencies.
 - `src/snap.js`: face-to-face alignment transforms, orientation de-duplication,
