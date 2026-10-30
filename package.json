@@ -1,0 +1,12 @@
+{
+  "name": "polyhedra-explorer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Snap Platonic and Archimedean solids together face-to-face in the browser.",
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes http-server -c-1 -p 8080 .",
+    "test": "node --test test/*.test.js"
+  },
+  "license": "MIT"
+}
