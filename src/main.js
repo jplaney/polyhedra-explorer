@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SOLIDS, FAMILIES, POLYGON_NAMES, buildSolid, describeFaces, vertexConfiguration } from './geometry.js';
 import { IDENTITY, makeInstance, snapOptions, SpatialIndex, grow, faceVertices } from './snap.js';
+import { JOHNSON_GROUPS } from './johnson.js';
 
 const MAX_SOLIDS = 1500;
 const STORAGE_KEY = 'polyhedra-explorer:v1';
@@ -472,36 +473,93 @@ function toast(msg) {
 
 const ORDER = Object.keys(SOLIDS);
 
+function solidButton(key) {
+  const s = buildSolid(key);
+  const label = s.label ?? vertexConfiguration(s).join('.');
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'solid';
+  btn.id = `solid-${key}`;
+  btn.dataset.key = key;
+  btn.dataset.search = `${s.name} ${label}`.toLowerCase();
+  btn.title = describeFaces(s);
+  const swatches = Object.keys(s.faceCounts)
+    .map((n) => `<i style="background:var(${FACE_TOKENS[n]})"></i>`)
+    .join('');
+  btn.innerHTML = `<span class="solid-name">${s.name}</span><span class="solid-meta"><span class="sw">${swatches}</span><code>${label}</code></span>`;
+  btn.addEventListener('click', () => select(key));
+  btn.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && showCard(key));
+  btn.addEventListener('pointerleave', () => showCard(state.selected));
+  btn.addEventListener('focus', () => showCard(key));
+  btn.addEventListener('blur', () => showCard(state.selected));
+  return btn;
+}
+
+// One collapsible section per family; the Johnson solids are further split
+// into Johnson's own groups.
 function buildPicker() {
   const root = $('#picker');
-  for (const { name, note } of FAMILIES) {
-    const heading = document.createElement('p');
-    heading.className = 'family';
-    heading.textContent = name;
-    if (note) heading.insertAdjacentHTML('beforeend', ` <span>${note}</span>`);
-    const list = document.createElement('div');
-    list.className = 'picker';
-    root.append(heading, list);
-    for (const key of ORDER.filter((k) => SOLIDS[k].family === name)) {
-      const s = buildSolid(key);
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'solid';
-      btn.id = `solid-${key}`;
-      btn.dataset.key = key;
-      btn.title = describeFaces(s);
-      const swatches = Object.keys(s.faceCounts)
-        .map((n) => `<i style="background:var(${FACE_TOKENS[n]})"></i>`)
-        .join('');
-      btn.innerHTML = `<span class="solid-name">${s.name}</span><span class="solid-meta"><span class="sw">${swatches}</span><code>${vertexConfiguration(s).join('.')}</code></span>`;
-      btn.addEventListener('click', () => select(key));
-      btn.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && showCard(key));
-      btn.addEventListener('pointerleave', () => showCard(state.selected));
-      btn.addEventListener('focus', () => showCard(key));
-      btn.addEventListener('blur', () => showCard(state.selected));
-      list.append(btn);
+  for (const { name, note, collapsed } of FAMILIES) {
+    const keys = ORDER.filter((k) => SOLIDS[k].family === name);
+    const details = document.createElement('details');
+    details.className = 'family';
+    details.id = `family-${name.toLowerCase()}`;
+    details.open = !collapsed;
+    details.innerHTML = `<summary>${name}<span class="family-count">${keys.length}</span></summary>`;
+    if (note) details.insertAdjacentHTML('beforeend', `<p class="family-note">${note}</p>`);
+
+    const groups = new Map();
+    for (const key of keys) {
+      const g = SOLIDS[key].group ?? -1;
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(key);
     }
+    for (const [g, groupKeys] of groups) {
+      const block = document.createElement('div');
+      block.className = 'picker';
+      if (g >= 0) block.insertAdjacentHTML('beforeend', `<p class="group">${JOHNSON_GROUPS[g]}</p>`);
+      for (const key of groupKeys) block.append(solidButton(key));
+      details.append(block);
+    }
+    root.append(details);
   }
+  revealSelected();
+}
+
+// Make sure the selected solid's section is open.
+function revealSelected() {
+  const btn = $(`#solid-${state.selected}`);
+  if (btn) btn.closest('details').open = true;
+}
+
+function applyFilter() {
+  const q = $('#solid-filter').value.trim().toLowerCase();
+  let total = 0;
+  for (const details of document.querySelectorAll('#picker details')) {
+    // Remember the open/closed state chosen by hand while a filter is active.
+    if (q && details.dataset.wasOpen === undefined) details.dataset.wasOpen = details.open;
+    let shown = 0;
+    for (const block of details.querySelectorAll('.picker')) {
+      let inBlock = 0;
+      for (const btn of block.querySelectorAll('.solid')) {
+        btn.hidden = q !== '' && !btn.dataset.search.includes(q);
+        if (!btn.hidden) inBlock++;
+      }
+      block.hidden = inBlock === 0;
+      shown += inBlock;
+    }
+    details.hidden = shown === 0;
+    if (q) details.open = true;
+    else if (details.dataset.wasOpen !== undefined) {
+      details.open = details.dataset.wasOpen === 'true';
+      delete details.dataset.wasOpen;
+    }
+    total += shown;
+  }
+  const empty = $('#filter-empty');
+  empty.hidden = total > 0;
+  empty.textContent = `No solids match “${$('#solid-filter').value.trim()}”.`;
+  if (!q) revealSelected();
 }
 
 // The card at the top of the picker shows the selected solid, or whichever
@@ -509,7 +567,7 @@ function buildPicker() {
 function showCard(key) {
   const s = buildSolid(key);
   $('#selected-name').textContent = s.name;
-  $('#selected-faces').textContent = describeFaces(s) + (s.chiral ? ' · chiral' : '');
+  $('#selected-faces').textContent = (s.label ? `${s.label} · ` : '') + describeFaces(s) + (s.chiral ? ' · chiral' : '');
   $('#selected').toggleAttribute('data-browsing', key !== state.selected);
   showPreview(key);
 }
@@ -590,6 +648,7 @@ function renderStatus() {
 }
 
 buildPicker();
+$('#solid-filter').addEventListener('input', applyFilter);
 $('#undo').addEventListener('click', undo);
 $('#frame').addEventListener('click', frame);
 $('#start-over').addEventListener('click', startOver);
