@@ -106,6 +106,32 @@ test('truncated icosahedra skip colliding placements', () => {
   assert.ok(added.length > 0);
 });
 
+test('hexagonal prisms grow into a honeycomb by translation', () => {
+  // Within n steps: in-layer cells form a triangular lattice (1, 7, 19 within
+  // 0, 1, 2 steps), and each step up or down the stack costs one step.
+  const added = lattice('prism6', [4, 6], 'translate', 1);
+  assert.equal(added.length, 8);
+  const two = lattice('prism6', [4, 6], 'translate', 2);
+  for (let i = 0; i < two.length; i++)
+    for (let j = i + 1; j < two.length; j++) assert.equal(overlaps(two[i], two[j]), false);
+  assert.equal(two.length, 19 + 2 * 7 + 2 * 1 - 1);
+});
+
+test('triangular prisms tile by mirroring across their faces', () => {
+  const added = lattice('prism3', [3, 4], 'mirror', 3);
+  for (let i = 0; i < added.length; i++)
+    for (let j = i + 1; j < added.length; j++) assert.equal(overlaps(added[i], added[j]), false);
+  assert.equal(added.slice(0, 5).length, 5);
+});
+
+test('antiprisms snap to octahedra and icosahedra on triangles', () => {
+  const ico = makeInstance('icosahedron', IDENTITY);
+  assert.ok(snapOptions('antiprism5', ico, 0).length > 0);
+  const anti = makeInstance('antiprism4', IDENTITY);
+  const tri = anti.faces.findIndex((f) => f.sides === 3);
+  for (const T of snapOptions('octahedron', anti, tri)) assert.ok(flush(anti, tri, makeInstance('octahedron', T)));
+});
+
 test('translate mode skips faces without a matching opposite face', () => {
   assert.equal(lattice('dodecahedron', [5], 'translate', 1).length, 0);
   assert.equal(lattice('tetrahedron', [3], 'translate', 1).length, 0);

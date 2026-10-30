@@ -102,7 +102,8 @@
     position: sticky;
     top: -8px; /* stays in view while browsing the list below */
     z-index: 1;
-    box-shadow: 0 6px 12px -8px rgb(0 0 0 / 0.25);
+    /* the first shadow masks list entries scrolling past above the card */
+    box-shadow: 0 -12px 0 var(--panel), 0 6px 12px -8px rgb(0 0 0 / 0.25);
   }
   /* The card's height must not depend on which solid it shows: it sits above
      the list, so a change in height would shift the entry under the pointer. */
@@ -118,7 +119,9 @@
   }
   .preview canvas { display: block; width: 100%; height: 100%; }
 
+  .families { display: contents; }
   .family { font-size: 12px; color: var(--muted); margin: 4px 0 -4px; }
+  .family span { opacity: 0.8; }
   .picker { display: grid; grid-template-columns: 1fr; gap: 2px; }
   .solid {
     all: unset;
@@ -252,7 +255,7 @@
   <aside class="panel">
     <header>
       <h1>Polyhedra Explorer</h1>
-      <p>Snap Platonic and Archimedean solids together face to face, then grow them into lattices.</p>
+      <p>Snap Platonic and Archimedean solids, prisms and antiprisms together face to face, then grow them into lattices.</p>
     </header>
 
     <section aria-labelledby="attach-h">
@@ -262,10 +265,7 @@
         <strong id="selected-name">Truncated icosahedron</strong>
         <span id="selected-faces">12 pentagons, 20 hexagons</span>
       </div>
-      <p class="family">Platonic</p>
-      <div class="picker" id="picker-platonic"></div>
-      <p class="family">Archimedean</p>
-      <div class="picker" id="picker-archimedean"></div>
+      <div class="families" id="picker"></div>
     </section>
 
     <section aria-labelledby="grow-h">
@@ -307,8 +307,8 @@
       </div>
       <dl class="keys">
         <dt>click</dt><dd>snap the preview on</dd>
-        <dt>R / shift R</dt><dd>next / previous orientation</dd>
-        <dt>shift click</dt><dd>remove a solid</dd>
+        <dt>R / E</dt><dd>next / previous orientation</dd>
+        <dt>hold shift</dt><dd>mark a solid to remove, then click</dd>
         <dt>Z</dt><dd>undo</dd>
         <dt>F</dt><dd>fit to view</dd>
         <dt>drag · wheel</dt><dd>orbit · zoom (right-drag pans)</dd>

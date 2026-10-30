@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { SOLIDS, POLYGON_NAMES, buildSolid, describeFaces, vertexConfiguration } from './geometry.js';
+import { SOLIDS, FAMILIES, POLYGON_NAMES, buildSolid, describeFaces, vertexConfiguration } from './geometry.js';
 import { IDENTITY, makeInstance, snapOptions, SpatialIndex, grow, faceVertices } from './snap.js';
 
 const MAX_SOLIDS = 1500;
@@ -41,6 +41,13 @@ const ghostMat = new THREE.MeshStandardMaterial({
 });
 const ghostEdgeMat = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.9 });
 const highlightMat = new THREE.LineBasicMaterial({ depthTest: false });
+// Drawn over a solid that a click would remove; pulled forward so it wins
+// the depth test against the solid's own faces.
+const removalMat = new THREE.MeshBasicMaterial({
+  transparent: true, opacity: 0.55, depthWrite: false,
+  polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+});
+const removalEdgeMat = new THREE.LineBasicMaterial();
 
 const solidsGroup = new THREE.Group();
 scene.add(solidsGroup);
@@ -49,6 +56,8 @@ function applyTheme() {
   scene.background = new THREE.Color(cssVar('--stage'));
   edgeMat.color.set(cssVar('--edge'));
   highlightMat.color.set(cssVar('--hilite'));
+  removalMat.color.set(cssVar('--blocked'));
+  removalEdgeMat.color.set(cssVar('--blocked'));
 }
 applyTheme();
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
@@ -103,6 +112,7 @@ const state = {
   instances: [],
   index: new SpatialIndex(),
   hover: null, // { inst, fi, options: [{ T, blocked }], choice }
+  removal: null, // instance a click would remove while Shift or Alt is held
   allowOverlap: false,
   undo: [],
 };
@@ -196,10 +206,31 @@ highlight.renderOrder = 2;
 highlight.visible = false;
 scene.add(highlight);
 
+const doomed = new THREE.Mesh(undefined, removalMat);
+doomed.add(new THREE.LineSegments(undefined, removalEdgeMat));
+doomed.renderOrder = 1;
+doomed.visible = false;
+scene.add(doomed);
+
 function clearHover() {
   state.hover = null;
+  state.removal = null;
   ghost.visible = false;
   highlight.visible = false;
+  doomed.visible = false;
+  renderStatus();
+}
+
+// Removal mode (Shift or Alt held): mark the solid under the pointer instead
+// of previewing an addition.
+function showRemoval(inst) {
+  clearHover();
+  state.removal = inst;
+  const g = solidGeometry(inst.key);
+  doomed.geometry = g.mesh;
+  doomed.children[0].geometry = g.edges;
+  setTransform(doomed, inst.T);
+  doomed.visible = true;
   renderStatus();
 }
 
@@ -210,6 +241,8 @@ function setHover(inst, fi) {
   }));
   const free = options.findIndex((o) => !o.blocked);
   state.hover = { inst, fi, options, choice: Math.max(free, 0) };
+  state.removal = null;
+  doomed.visible = false;
 
   const f = inst.faces[fi];
   const pts = faceVertices(inst, fi).map((p) => new THREE.Vector3(...p).addScaledVector(new THREE.Vector3(...f.normal), 0.004));
@@ -247,7 +280,7 @@ function cycleOrientation(step) {
 // ------------------------------------------------------------ picking
 
 const raycaster = new THREE.Raycaster();
-const pointer = { x: 0, y: 0, inside: false };
+const pointer = { x: 0, y: 0, inside: false, removing: false };
 
 function pick(clientX, clientY) {
   const rect = renderer.domElement.getBoundingClientRect();
@@ -259,9 +292,13 @@ function pick(clientX, clientY) {
   return { inst, fi: solidGeometry(inst.key).triFace[hit.faceIndex] };
 }
 
-function hoverAt(clientX, clientY) {
+function hoverAt(clientX, clientY, removing = pointer.removing) {
   const p = pick(clientX, clientY);
   if (!p) return clearHover();
+  if (removing) {
+    if (state.removal !== p.inst) showRemoval(p.inst);
+    return;
+  }
   const h = state.hover;
   if (h && h.inst === p.inst && h.fi === p.fi) return;
   setHover(p.inst, p.fi);
@@ -285,6 +322,13 @@ function removeAt(clientX, clientY) {
   checkpoint();
   removeInstance(p.inst);
   changed();
+  if (pointer.inside) hoverAt(pointer.x, pointer.y);
+}
+
+function setRemoving(on) {
+  if (pointer.removing === on) return;
+  pointer.removing = on;
+  if (pointer.inside && !down) hoverAt(pointer.x, pointer.y);
 }
 
 const canvas = renderer.domElement;
@@ -295,7 +339,7 @@ canvas.addEventListener('pointerdown', (e) => {
   down = { x: e.clientX, y: e.clientY, button: e.button };
 });
 canvas.addEventListener('pointermove', (e) => {
-  Object.assign(pointer, { x: e.clientX, y: e.clientY, inside: true });
+  Object.assign(pointer, { x: e.clientX, y: e.clientY, inside: true, removing: e.shiftKey || e.altKey });
   if (e.pointerType === 'touch' || e.buttons) return;
   if (moveQueued) return;
   moveQueued = true;
@@ -326,16 +370,27 @@ canvas.addEventListener('pointerup', (e) => {
     if (p && h && p.inst === h.inst && p.fi === h.fi) return place();
     return p ? setHover(p.inst, p.fi) : clearHover();
   }
-  hoverAt(e.clientX, e.clientY);
+  hoverAt(e.clientX, e.clientY, false);
   place();
 });
 
+const isRemoveModifier = (e) => e.key === 'Shift' || e.key === 'Alt';
+// On release, removal mode stays on only if the other modifier is still held.
+window.addEventListener('keyup', (e) => isRemoveModifier(e) && setRemoving(e.key === 'Shift' ? e.altKey : e.shiftKey));
+window.addEventListener('blur', () => setRemoving(false));
+
 window.addEventListener('keydown', (e) => {
+  if (isRemoveModifier(e)) {
+    if (e.key === 'Alt') e.preventDefault(); // keep Alt from focusing the browser menu
+    return setRemoving(true);
+  }
   if (e.target.closest('input, select, textarea')) return;
   const k = e.key.toLowerCase();
   if (k === 'r' || k === ' ') {
     e.preventDefault();
-    cycleOrientation(e.shiftKey ? -1 : 1);
+    cycleOrientation(1);
+  } else if (k === 'e') {
+    cycleOrientation(-1);
   } else if (k === 'z' && !e.shiftKey) {
     e.preventDefault();
     undo();
@@ -418,9 +473,16 @@ function toast(msg) {
 const ORDER = Object.keys(SOLIDS);
 
 function buildPicker() {
-  for (const family of ['Platonic', 'Archimedean']) {
-    const list = $(`#picker-${family.toLowerCase()}`);
-    for (const key of ORDER.filter((k) => SOLIDS[k].family === family)) {
+  const root = $('#picker');
+  for (const { name, note } of FAMILIES) {
+    const heading = document.createElement('p');
+    heading.className = 'family';
+    heading.textContent = name;
+    if (note) heading.insertAdjacentHTML('beforeend', ` <span>${note}</span>`);
+    const list = document.createElement('div');
+    list.className = 'picker';
+    root.append(heading, list);
+    for (const key of ORDER.filter((k) => SOLIDS[k].family === name)) {
       const s = buildSolid(key);
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -503,8 +565,13 @@ function renderStatus() {
     status.textContent = `Click anywhere to place a ${sel.name.toLowerCase()}.`;
     return;
   }
+  if (state.removal) {
+    status.dataset.state = 'blocked';
+    status.textContent = `Click to remove this ${state.removal.solid.name.toLowerCase()}.`;
+    return;
+  }
   if (!h) {
-    status.textContent = `Hover a face to preview a ${sel.name.toLowerCase()} there. Click to snap it on.`;
+    status.textContent = `Hover a face to preview a ${sel.name.toLowerCase()} there. Click to snap it on, or hold Shift to remove a solid.`;
     return;
   }
   const n = h.inst.faces[h.fi].sides;
