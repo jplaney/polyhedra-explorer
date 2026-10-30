@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Polyhedra Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: a drafting-table side panel beside a full-bleed 3D stage; the
+     solids' face colours carry all the colour, the chrome stays ink-on-paper. */
+  :root {
+    --paper: #f2f3ef;
+    --panel: #fafaf7;
+    --ink: #1c2125;
+    --muted: #5f6870;
+    --rule: #d9dcd5;
+    --chip: #ebece6;
+    --stage: #dfe3df;
+    --edge: #20262b;
+    --hilite: #0d1114;
+    --ok: #2c7a4b;
+    --warn: #a86400;
+    --blocked: #d23c3c;
+    /* face colours, after George Hart's convention */
+    --tri: #f2b631;
+    --sq: #d94a43;
+    --pent: #2f6fd6;
+    --hex: #34a06d;
+    --oct: #8b5ed8;
+    --dec: #ec7a2c;
+    --display: "Unbounded", "Arial Black", system-ui, sans-serif;
+    --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #15191c; --panel: #1b2024; --ink: #e7e9e4; --muted: #99a1a8;
+      --rule: #2d3439; --chip: #252c31; --stage: #111518; --edge: #0a0c0e;
+      --hilite: #ffffff; --ok: #5cc98a; --warn: #f0b24a; --blocked: #ff6b6b;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #15191c; --panel: #1b2024; --ink: #e7e9e4; --muted: #99a1a8;
+    --rule: #2d3439; --chip: #252c31; --stage: #111518; --edge: #0a0c0e;
+    --hilite: #ffffff; --ok: #5cc98a; --warn: #f0b24a; --blocked: #ff6b6b;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font: 14px/1.45 var(--body);
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  /* ---------- panel */
+  .panel {
+    background: var(--panel);
+    border-right: 1px solid var(--rule);
+    overflow-y: auto;
+    padding-block: 20px 28px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    min-width: 0;
+  }
+  header h1 {
+    font: 700 19px/1.1 var(--display);
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+  header p { margin: 0; color: var(--muted); }
+  section { display: flex; flex-direction: column; gap: 10px; }
+  h2 {
+    font: 600 11px/1 var(--body);
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    margin: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  h2 .count { font: 500 11px var(--mono); letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
+
+  .selected {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: var(--paper);
+    position: sticky;
+    top: -8px; /* stays in view while browsing the list below */
+    z-index: 1;
+    box-shadow: 0 6px 12px -8px rgb(0 0 0 / 0.25);
+  }
+  .selected strong { display: block; font: 500 14px/1.2 var(--display); }
+  .selected span { color: var(--muted); font-size: 13px; }
+  .selected[data-browsing] strong::after {
+    content: "preview"; margin-left: 8px; vertical-align: 2px;
+    font: 500 10px var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  }
+  .preview { height: 160px; margin: -4px -6px 6px; }
+  .preview canvas { display: block; width: 100%; height: 100%; }
+
+  .family { font-size: 12px; color: var(--muted); margin: 4px 0 -4px; }
+  .picker { display: grid; grid-template-columns: 1fr; gap: 2px; }
+  .solid {
+    all: unset;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13.5px;
+  }
+  .solid:hover { background: var(--chip); }
+  .solid:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+  .solid[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+  .solid-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .solid code { font: 12px var(--mono); color: var(--muted); min-width: 64px; text-align: right; }
+  .solid[aria-pressed="true"] code { color: inherit; opacity: 0.75; }
+  .sw { display: flex; gap: 2px; }
+  .sw i, .chip i, .legend i {
+    width: 9px; height: 9px; border-radius: 2px; display: inline-block;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.18);
+  }
+
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button.btn {
+    font: 500 13px var(--body);
+    color: var(--ink);
+    background: var(--chip);
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    padding: 7px 11px;
+    cursor: pointer;
+  }
+  button.btn:hover:not(:disabled) { border-color: var(--muted); }
+  button.btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  button.btn:disabled { opacity: 0.45; cursor: default; }
+  button.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .wide { width: 100%; }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 9px 5px 6px;
+    border: 1px solid var(--rule); border-radius: 999px;
+    font-size: 13px; cursor: pointer; background: var(--paper);
+  }
+  .chip input { margin: 0; accent-color: var(--ink); }
+  .field { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 13px; }
+  select, input[type="number"] {
+    font: 13px var(--body); color: var(--ink); background: var(--paper);
+    border: 1px solid var(--rule); border-radius: 5px; padding: 5px 7px;
+  }
+  input[type="number"] { width: 64px; font-family: var(--mono); }
+  .toggle { display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; }
+  .toggle input { accent-color: var(--ink); margin: 0; }
+  .note { color: var(--muted); font-size: 12.5px; margin: 0; max-width: 60ch; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; gap: 6px; align-items: center; }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; font-size: 12.5px; color: var(--muted); margin: 0; }
+  .keys dt { font: 11.5px var(--mono); color: var(--ink); }
+  .keys dd { margin: 0; }
+
+  /* ---------- stage */
+  .stage { position: relative; min-width: 0; min-height: 0; background: var(--stage); }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+  .hud {
+    position: absolute;
+    left: 14px; right: max(14px, env(safe-area-inset-right, 0px)); bottom: 14px;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    pointer-events: none;
+  }
+  .hud > * { pointer-events: auto; }
+  .status {
+    background: var(--panel); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 6px;
+    padding: 7px 11px 7px 26px; position: relative;
+    font-size: 13px; max-width: 100%;
+    box-shadow: 0 2px 10px rgb(0 0 0 / 0.08);
+  }
+  .status::before {
+    content: ""; position: absolute; left: 10px; top: 50%;
+    width: 8px; height: 8px; margin-top: -4px; border-radius: 50%;
+    background: var(--muted);
+  }
+  .status[data-state="ok"]::before { background: var(--ok); }
+  .status[data-state="warn"]::before { background: var(--warn); }
+  .status[data-state="blocked"]::before { background: var(--blocked); }
+  .orient {
+    display: inline-flex; align-items: center;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 6px;
+    box-shadow: 0 2px 10px rgb(0 0 0 / 0.08);
+  }
+  .orient button {
+    all: unset; cursor: pointer; padding: 6px 10px; font: 500 14px var(--mono); color: var(--ink);
+  }
+  .orient button:focus-visible { outline: 2px solid var(--ink); }
+  .orient span { font: 12px var(--mono); color: var(--muted); padding: 0 2px; font-variant-numeric: tabular-nums; }
+  .toast {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: var(--panel);
+    padding: 8px 14px; border-radius: 6px; font-size: 13px;
+    max-width: calc(100% - 28px);
+  }
+
+  @media (max-width: 760px) {
+    body { grid-template-columns: minmax(0, 1fr); grid-template-rows: 56% minmax(0, 1fr); }
+    .stage { grid-row: 1; }
+    .panel {
+      grid-row: 2; border-right: 0; border-top: 1px solid var(--rule);
+      padding-right: max(16px, env(safe-area-inset-right, 0px));
+      padding-block: 16px 24px;
+    }
+    .hud { left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: 10px; }
+    .keys { display: none; }
+    .selected { position: static; box-shadow: none; }
+    .preview { height: 120px; }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+  <aside class="panel">
+    <header>
+      <h1>Polyhedra Explorer</h1>
+      <p>Snap Platonic and Archimedean solids together face to face, then grow them into lattices.</p>
+    </header>
+
+    <section aria-labelledby="attach-h">
+      <h2 id="attach-h">Solid to attach</h2>
+      <div class="selected" id="selected">
+        <div class="preview" id="preview" aria-hidden="true"></div>
+        <strong id="selected-name">Truncated icosahedron</strong>
+        <span id="selected-faces">12 pentagons, 20 hexagons</span>
+      </div>
+      <p class="family">Platonic</p>
+      <div class="picker" id="picker-platonic"></div>
+      <p class="family">Archimedean</p>
+      <div class="picker" id="picker-archimedean"></div>
+    </section>
+
+    <section aria-labelledby="grow-h">
+      <h2 id="grow-h">Grow a lattice</h2>
+      <p class="note">Copies every solid across each chosen face type, repeating outward. Copies that would overlap are skipped.</p>
+      <div class="row" id="grow-sides"></div>
+      <label class="field" for="grow-mode">Placement
+        <select id="grow-mode">
+          <option value="mirror">Mirror across face</option>
+          <option value="translate">Slide opposite face over</option>
+        </select>
+      </label>
+      <label class="field" for="grow-gens">Generations
+        <input id="grow-gens" type="number" min="1" max="8" value="2">
+      </label>
+      <button class="btn primary wide" id="grow" type="button">Grow lattice</button>
+    </section>
+
+    <section aria-labelledby="scene-h">
+      <h2 id="scene-h">Scene <span class="count" id="count">0 solids</span></h2>
+      <div class="row">
+        <button class="btn" id="undo" type="button">Undo</button>
+        <button class="btn" id="frame" type="button">Fit to view</button>
+      </div>
+      <button class="btn wide" id="start-over" type="button">Start over</button>
+      <label class="toggle" for="allow-overlap"><input type="checkbox" id="allow-overlap"> Allow overlapping placements</label>
+      <label class="toggle" for="show-edges"><input type="checkbox" id="show-edges" checked> Show edges</label>
+    </section>
+
+    <section aria-labelledby="key-h">
+      <h2 id="key-h">Faces</h2>
+      <div class="legend">
+        <span><i style="background:var(--tri)"></i>triangle</span>
+        <span><i style="background:var(--sq)"></i>square</span>
+        <span><i style="background:var(--pent)"></i>pentagon</span>
+        <span><i style="background:var(--hex)"></i>hexagon</span>
+        <span><i style="background:var(--oct)"></i>octagon</span>
+        <span><i style="background:var(--dec)"></i>decagon</span>
+      </div>
+      <dl class="keys">
+        <dt>click</dt><dd>snap the preview on</dd>
+        <dt>R / shift R</dt><dd>next / previous orientation</dd>
+        <dt>shift click</dt><dd>remove a solid</dd>
+        <dt>Z</dt><dd>undo</dd>
+        <dt>F</dt><dd>fit to view</dd>
+        <dt>drag · wheel</dt><dd>orbit · zoom (right-drag pans)</dd>
+      </dl>
+      <p class="note">On touch screens, tap a face to preview and tap it again to place.</p>
+    </section>
+  </aside>
+
+  <main class="stage" id="stage">
+    <div class="hud">
+      <div class="status" id="status" role="status">Loading…</div>
+      <div class="orient" id="orient" hidden>
+        <button type="button" id="orient-prev" aria-label="Previous orientation">‹</button>
+        <span id="orient-label">1 / 2</span>
+        <button type="button" id="orient-next" aria-label="Next orientation">›</button>
+      </div>
+    </div>
+    <div class="toast" id="toast" role="alert" hidden></div>
+  </main>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
