@@ -107,21 +107,50 @@
   }
   /* The card's height must not depend on which solid it shows: it sits above
      the list, so a change in height would shift the entry under the pointer. */
-  .selected strong, .selected span {
-    display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  /* Room for a two-line name and a two-line face list whatever is shown;
+     shorter text sits at the bottom, next to the list. */
+  .card-text {
+    height: calc(2 * 1.2 * 14px + 2 * 1.4 * 13px + 2px);
+    display: flex; flex-direction: column; justify-content: flex-end; gap: 2px;
   }
-  .selected strong { font: 500 14px/1.2 var(--display); }
-  .selected span { color: var(--muted); font-size: 13px; }
-  .preview { height: 160px; margin: -4px -6px 6px; position: relative; }
+  .selected strong, .selected span {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  }
+  .selected strong { font: 500 14px/1.2 var(--display); text-wrap: balance; }
+  .selected span { color: var(--muted); font-size: 13px; line-height: 1.4; }
+  .preview { height: 140px; margin: -4px -6px 6px; position: relative; }
   .selected[data-browsing] .preview::after {
     content: "preview"; position: absolute; top: 4px; left: 6px;
     font: 500 10px var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
   }
   .preview canvas { display: block; width: 100%; height: 100%; }
 
-  .families { display: contents; }
-  .family { font-size: 12px; color: var(--muted); margin: 4px 0 -4px; }
-  .family span { opacity: 0.8; }
+  .families { display: flex; flex-direction: column; gap: 6px; }
+  .family summary {
+    list-style: none; cursor: pointer; padding: 4px 8px 4px 0; border-radius: 5px;
+    font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px;
+  }
+  .family summary::-webkit-details-marker { display: none; }
+  .family summary::before {
+    content: ""; width: 0; height: 0; margin: 0 2px 0 4px;
+    border-left: 5px solid currentColor; border-block: 4px solid transparent;
+    transition: transform 0.12s;
+  }
+  .family[open] summary::before { transform: rotate(90deg); }
+  .family summary:hover { color: var(--ink); }
+  .family summary:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+  .family-count { margin-left: auto; font: 11px var(--mono); font-variant-numeric: tabular-nums; }
+  .family-note { font-size: 12px; color: var(--muted); margin: 0 0 4px 17px; opacity: 0.85; }
+  .group {
+    font-size: 11px; color: var(--muted); margin: 8px 0 2px 8px;
+    text-transform: uppercase; letter-spacing: 0.07em;
+  }
+  .filter {
+    width: 100%; font: 13px var(--body); color: var(--ink); background: var(--paper);
+    border: 1px solid var(--rule); border-radius: 5px; padding: 7px 9px;
+  }
+  .filter:focus-visible { outline: 2px solid var(--ink); outline-offset: 0; }
+  @media (prefers-reduced-motion: reduce) { .family summary::before { transition: none; } }
   .picker { display: grid; grid-template-columns: 1fr; gap: 2px; }
   .solid {
     all: unset;
@@ -255,16 +284,20 @@
   <aside class="panel">
     <header>
       <h1>Polyhedra Explorer</h1>
-      <p>Snap Platonic and Archimedean solids, prisms and antiprisms together face to face, then grow them into lattices.</p>
+      <p>Snap Platonic, Archimedean and Johnson solids, prisms and antiprisms together face to face, then grow them into lattices.</p>
     </header>
 
     <section aria-labelledby="attach-h">
       <h2 id="attach-h">Solid to attach</h2>
       <div class="selected" id="selected">
         <div class="preview" id="preview" aria-hidden="true"></div>
-        <strong id="selected-name">Truncated icosahedron</strong>
-        <span id="selected-faces">12 pentagons, 20 hexagons</span>
+        <div class="card-text">
+          <strong id="selected-name">Truncated icosahedron</strong>
+          <span id="selected-faces">12 pentagons, 20 hexagons</span>
+        </div>
       </div>
+      <input class="filter" type="search" id="solid-filter" placeholder="Filter by name or J-number" aria-label="Filter solids" autocomplete="off">
+      <p class="note" id="filter-empty" hidden></p>
       <div class="families" id="picker"></div>
     </section>
 

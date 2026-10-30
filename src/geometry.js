@@ -354,7 +354,10 @@ export function buildSolid(key) {
   const def = SOLIDS[key];
   if (!def) throw new Error(`Unknown solid: ${key}`);
 
-  const raw = def.vertices();
+  // Centre on the vertex centroid (a no-op for the symmetric solids).
+  let raw = def.vertices();
+  const c = scale(raw.reduce(add, [0, 0, 0]), 1 / raw.length);
+  raw = raw.map((v) => sub(v, c));
   const hull = findFaces(raw);
   const vertices = raw.map((v) => scale(v, 1 / hull.edgeLength));
   const { faces, edges, vertexDegree } = findFaces(vertices);
@@ -370,12 +373,16 @@ export function buildSolid(key) {
     name: def.name,
     family: def.family,
     chiral: !!def.chiral,
+    group: def.group,
+    label: def.label,
     vertices,
     faces,
     edges,
     vertexDegree,
     faceCounts,
-    circumradius: length(vertices[0]),
+    // Farthest vertex from the centre: the bounding radius for solids whose
+    // vertices don't all lie on one sphere.
+    circumradius: Math.max(...vertices.map(length)),
   };
   cache.set(key, solid);
   return solid;
