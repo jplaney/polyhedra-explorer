@@ -97,18 +97,29 @@
     justify-content: space-between;
     align-items: baseline;
   }
-  h2 .count { font: 500 11px var(--mono); letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
 
+  /* The preview card and the scene actions stay in view while the list
+     below scrolls, so the shape you're looking at and the buttons that act
+     on the scene are always together. */
+  .pinned {
+    position: sticky;
+    top: -8px;
+    z-index: 1;
+    background: var(--panel);
+    display: flex; flex-direction: column; gap: 8px;
+    padding-bottom: 10px;
+    /* the first shadow masks list entries scrolling past above the card */
+    box-shadow: 0 -12px 0 var(--panel), 0 8px 10px -10px rgb(0 0 0 / 0.3);
+  }
   .selected {
     border: 1px solid var(--rule);
     border-radius: 6px;
     padding: 10px 12px;
     background: var(--paper);
-    position: sticky;
-    top: -8px; /* stays in view while browsing the list below */
-    z-index: 1;
-    /* the first shadow masks list entries scrolling past above the card */
-    box-shadow: 0 -12px 0 var(--panel), 0 6px 12px -8px rgb(0 0 0 / 0.25);
+  }
+  .scene-row { display: flex; gap: 8px; align-items: center; }
+  .scene-row .count {
+    margin-left: auto; font: 500 11.5px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums;
   }
   /* The card's height must not depend on which solid it shows: it sits above
      the list, so a change in height would shift the entry under the pointer. */
@@ -313,7 +324,7 @@
     .hud { left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: 10px; }
     .keys { display: none; }
     .edge-card { top: 10px; left: max(10px, env(safe-area-inset-left, 0px)); max-height: calc(100% - 80px); }
-    .selected { position: static; box-shadow: none; }
+    .pinned { position: static; box-shadow: none; padding-bottom: 0; }
     .preview { height: 120px; }
   }
 </style>
@@ -335,11 +346,19 @@
 
     <section aria-labelledby="attach-h">
       <h2 id="attach-h">Solid to attach</h2>
-      <div class="selected" id="selected">
-        <div class="preview" id="preview" aria-hidden="true"></div>
-        <div class="card-text">
-          <strong id="selected-name">Truncated icosahedron</strong>
-          <span id="selected-faces">12 pentagons, 20 hexagons</span>
+      <div class="pinned">
+        <div class="selected" id="selected">
+          <div class="preview" id="preview" aria-hidden="true"></div>
+          <div class="card-text">
+            <strong id="selected-name">Truncated icosahedron</strong>
+            <span id="selected-faces">12 pentagons, 20 hexagons</span>
+          </div>
+        </div>
+        <button class="btn primary wide" id="start-over" type="button">Start over with this solid</button>
+        <div class="scene-row" role="group" aria-label="Scene">
+          <button class="btn" id="undo" type="button">Undo</button>
+          <button class="btn" id="frame" type="button">Fit to view</button>
+          <span class="count" id="count" role="status">0 solids</span>
         </div>
       </div>
       <input class="filter" type="search" id="solid-filter" placeholder="Filter by name or J-number" aria-label="Filter solids" autocomplete="off">
@@ -363,13 +382,8 @@
       <button class="btn primary wide" id="grow" type="button">Grow lattice</button>
     </section>
 
-    <section aria-labelledby="scene-h">
-      <h2 id="scene-h">Scene <span class="count" id="count">0 solids</span></h2>
-      <div class="row">
-        <button class="btn" id="undo" type="button">Undo</button>
-        <button class="btn" id="frame" type="button">Fit to view</button>
-      </div>
-      <button class="btn wide" id="start-over" type="button">Start over</button>
+    <section aria-labelledby="options-h">
+      <h2 id="options-h">Options</h2>
       <label class="toggle" for="allow-overlap"><input type="checkbox" id="allow-overlap"> Allow overlapping placements</label>
       <label class="toggle" for="show-edges"><input type="checkbox" id="show-edges" checked> Show edges</label>
     </section>

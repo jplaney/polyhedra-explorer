@@ -12,6 +12,10 @@ const FACE_TOKENS = { 3: '--tri', 4: '--sq', 5: '--pent', 6: '--hex', 8: '--oct'
 const $ = (sel) => document.querySelector(sel);
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const polygon = (n) => POLYGON_NAMES[n] ?? `${n}-gon`;
+// "a cube", "an octahedron": every solid name here starts with a letter
+// whose sound matches its spelling.
+const capitalize = (text) => text[0].toUpperCase() + text.slice(1);
+const aOrAn = (word) => `${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`;
 
 // ------------------------------------------------------------ three.js setup
 
@@ -618,7 +622,7 @@ function renderEdgeCard() {
   const fit = $('#edge-fit');
   if (!gap) fit.textContent = 'Nothing more fits around this edge.';
   else if (!h || !h.options.length)
-    fit.textContent = `A ${sel.name.toLowerCase()} has no ${polygon(gap.after.inst.faces[gap.after.endFace].sides)} face to put against this side of the gap.`;
+    fit.textContent = `${capitalize(aOrAn(sel.name.toLowerCase()))} has no ${polygon(gap.after.inst.faces[gap.after.endFace].sides)} face to put against this side of the gap.`;
   else if (opt.angle > gap.size + ANGLE_TOLERANCE)
     fit.textContent = `Needs ${degrees(opt.angle)}, but the gap is ${degrees(gap.size)}.`;
   else if (gap.size - opt.angle < ANGLE_TOLERANCE) fit.textContent = `Takes ${degrees(opt.angle)} and closes the edge exactly.`;
@@ -862,7 +866,7 @@ function renderPanel() {
   for (const btn of document.querySelectorAll('.solid')) btn.setAttribute('aria-pressed', btn.dataset.key === state.selected);
   showCard(state.selected);
   const s = buildSolid(state.selected);
-  $('#start-over').textContent = `Start over with one ${s.name.toLowerCase()}`;
+  $('#start-over').title = `Clear the scene and place one ${s.name.toLowerCase()}`;
 
   const count = state.instances.length;
   $('#count').textContent = `${count} solid${count === 1 ? '' : 's'}`;
@@ -894,7 +898,7 @@ function renderStatus() {
   status.dataset.state = 'idle';
 
   if (!state.instances.length) {
-    status.textContent = `Click anywhere to place a ${sel.name.toLowerCase()}.`;
+    status.textContent = `Click anywhere to place ${aOrAn(sel.name.toLowerCase())}.`;
     return;
   }
   if (state.removal) {
@@ -916,13 +920,13 @@ function renderStatus() {
     return;
   }
   if (!h) {
-    status.textContent = `Hover a face to preview a ${sel.name.toLowerCase()} there. Click to snap it on, or hold Shift to remove a solid.`;
+    status.textContent = `Hover a face to preview ${aOrAn(sel.name.toLowerCase())} there. Click to snap it on, or hold Shift to remove a solid.`;
     return;
   }
   const n = h.inst.faces[h.fi].sides;
   if (!h.options.length) {
     status.dataset.state = 'blocked';
-    status.textContent = `A ${sel.name.toLowerCase()} has no ${polygon(n)} faces to match this one.`;
+    status.textContent = `${capitalize(aOrAn(sel.name.toLowerCase()))} has no ${polygon(n)} faces to match this one.`;
     return;
   }
   const opt = h.options[h.choice];
