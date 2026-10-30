@@ -24,6 +24,9 @@
     --ok: #2c7a4b;
     --warn: #a86400;
     --blocked: #d23c3c;
+    --fan-a: #3d4a55;
+    --fan-b: #8796a3;
+    --gap: #0891b2;
     /* face colours, after George Hart's convention */
     --tri: #f2b631;
     --sq: #d94a43;
@@ -40,6 +43,7 @@
       --paper: #15191c; --panel: #1b2024; --ink: #e7e9e4; --muted: #99a1a8;
       --rule: #2d3439; --chip: #252c31; --stage: #111518; --edge: #0a0c0e;
       --hilite: #ffffff; --ok: #5cc98a; --warn: #f0b24a; --blocked: #ff6b6b;
+      --fan-a: #c9d3db; --fan-b: #7d8a95; --gap: #22d3ee;
       color-scheme: dark;
     }
   }
@@ -47,6 +51,7 @@
     --paper: #15191c; --panel: #1b2024; --ink: #e7e9e4; --muted: #99a1a8;
     --rule: #2d3439; --chip: #252c31; --stage: #111518; --edge: #0a0c0e;
     --hilite: #ffffff; --ok: #5cc98a; --warn: #f0b24a; --blocked: #ff6b6b;
+    --fan-a: #c9d3db; --fan-b: #7d8a95; --gap: #22d3ee;
     color-scheme: dark;
   }
 
@@ -257,6 +262,46 @@
     max-width: calc(100% - 28px);
   }
 
+  .mode {
+    font: 500 13px var(--body); color: var(--ink); background: var(--panel);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 7px 11px; cursor: pointer;
+    box-shadow: 0 2px 10px rgb(0 0 0 / 0.08);
+  }
+  .mode[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .mode:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  /* Edge inspector: floats over the top-left of the stage. */
+  .edge-card {
+    position: absolute; top: 14px; left: 14px; width: 300px; max-width: calc(100% - 28px);
+    max-height: calc(100% - 90px); overflow-y: auto;
+    background: var(--panel); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px 14px;
+    box-shadow: 0 6px 24px rgb(0 0 0 / 0.14);
+    display: flex; flex-direction: column; gap: 10px; font-size: 13px;
+  }
+  .edge-card header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .edge-card h3 { margin: 0; font: 500 14px/1.2 var(--display); }
+  .edge-card .eyebrow { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .edge-card .close { all: unset; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 2px; }
+  .edge-card .close:focus-visible { outline: 2px solid var(--ink); }
+  .edge-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+  .edge-rows li, .edge-total { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; }
+  .edge-rows i { width: 10px; height: 10px; border-radius: 2px; }
+  .edge-rows .fan-a { background: var(--fan-a); }
+  .edge-rows .fan-b { background: var(--fan-b); }
+  .edge-rows b, .edge-total b { font: 500 12.5px var(--mono); font-variant-numeric: tabular-nums; }
+  .edge-total { grid-template-columns: 1fr auto; border-top: 1px solid var(--rule); padding-top: 8px; font-weight: 600; }
+  .edge-total[data-state="warn"] b { color: var(--gap); }
+  .edge-total[data-state="blocked"] b { color: var(--blocked); }
+  .edge-total[data-state="ok"] b { color: var(--ok); }
+  .edge-filled, .edge-fit { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .edge-suggest p { margin: 0 0 4px; font-size: 12.5px; color: var(--muted); }
+  .edge-suggest ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+  .edge-suggest .muted { color: var(--muted); font-size: 12px; }
+  .link { all: unset; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--rule); }
+  .link:hover { text-decoration-color: currentColor; }
+  .link:focus-visible { outline: 2px solid var(--ink); }
+
   @media (max-width: 760px) {
     body { grid-template-columns: minmax(0, 1fr); grid-template-rows: 56% minmax(0, 1fr); }
     .stage { grid-row: 1; }
@@ -267,6 +312,7 @@
     }
     .hud { left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: 10px; }
     .keys { display: none; }
+    .edge-card { top: 10px; left: max(10px, env(safe-area-inset-left, 0px)); max-height: calc(100% - 80px); }
     .selected { position: static; box-shadow: none; }
     .preview { height: 120px; }
   }
@@ -344,6 +390,7 @@
         <dt>hold shift</dt><dd>mark a solid to remove, then click</dd>
         <dt>Z</dt><dd>undo</dd>
         <dt>F</dt><dd>fit to view</dd>
+        <dt>G</dt><dd>edge angles on / off</dd>
         <dt>drag · wheel</dt><dd>orbit · zoom (right-drag pans)</dd>
       </dl>
       <p class="note">On touch screens, tap a face to preview and tap it again to place.</p>
@@ -352,6 +399,7 @@
 
   <main class="stage" id="stage">
     <div class="hud">
+      <button class="mode" id="edge-mode" type="button" aria-pressed="false" title="Measure the angles around an edge (G)">Edge angles</button>
       <div class="status" id="status" role="status">Loading…</div>
       <div class="orient" id="orient" hidden>
         <button type="button" id="orient-prev" aria-label="Previous orientation">‹</button>
@@ -359,6 +407,24 @@
         <button type="button" id="orient-next" aria-label="Next orientation">›</button>
       </div>
     </div>
+    <section class="edge-card" id="edge-card" aria-labelledby="edge-title" hidden>
+      <header>
+        <div>
+          <div class="eyebrow">Around this edge</div>
+          <h3 id="edge-title">Edge</h3>
+        </div>
+        <button class="close" id="edge-close" type="button" aria-label="Stop inspecting this edge">×</button>
+      </header>
+      <ol class="edge-rows" id="edge-rows"></ol>
+      <div class="edge-total" id="edge-total"></div>
+      <p class="edge-filled" id="edge-filled"></p>
+      <div class="row">
+        <button class="btn primary" id="edge-add" type="button">Add</button>
+        <button class="btn" id="edge-fill" type="button" title="Keep adding while it fits">Fill</button>
+      </div>
+      <p class="edge-fit" id="edge-fit"></p>
+      <div class="edge-suggest" id="edge-suggest"></div>
+    </section>
     <div class="toast" id="toast" role="alert" hidden></div>
   </main>
 

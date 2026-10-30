@@ -39,6 +39,29 @@ or `python3 -m http.server` and open `index.html`.
     face lands on the shared face. Cubes, truncated octahedra or hexagonal
     prisms across all faces tile space this way.
 
+### Edge angles
+
+Solids that share an edge fan around it like pages around a book's spine, and
+each fills a wedge equal to its **dihedral angle** there. Space closes up
+around the edge only if the wedges add up to exactly 360°. Four cubes do
+(4 × 90°); five tetrahedra leave a 7.36° gap; three dodecahedra leave 10.3°,
+the gap that folds them up into the 4D 120-cell.
+
+Press **Edge angles** (or `G`) and hover an edge to read its dihedral angle.
+Click it to inspect it:
+
+- The card lists every solid around the edge with the angle it takes, and the
+  gap (or overlap) left over. A fan of wedges is drawn around the edge itself,
+  with any gap in cyan.
+- **Add** puts the selected solid into the gap (`R` / `E` cycle the ways it can
+  go on, `Enter` adds it); **Fill** keeps adding while it fits.
+- Suggestions list combinations of solids from the whole library whose angles
+  close the gap exactly, such as a tetrahedron and two octahedra for the gap
+  next to one tetrahedron. They match by angle only: the faces must match
+  too to snap them on. Click a name to select that solid.
+
+`Esc` stops inspecting the edge; `G` turns the tool off.
+
 Faces are coloured by polygon type: triangles amber, squares red, pentagons
 blue, hexagons green, octagons violet, decagons orange. The scene is saved in
 the browser's local storage.
@@ -55,6 +78,8 @@ the browser's local storage.
   J88–J92) have no such construction and are given as coordinates, using the
   values tabulated by [David McCooey](https://dmccooey.com/polyhedra/Johnson.html)
   after A. Timofeenko's exact solutions.
+- `src/edges.js`: dihedral angles, the fan of solids around an edge and its
+  gaps, and the search for angle combinations that close a gap.
 - `src/snap.js`: face-to-face alignment transforms, orientation de-duplication,
   convex overlap testing (separating axis theorem) and lattice growth.
 - `src/main.js`: three.js scene, picking, preview and UI.
