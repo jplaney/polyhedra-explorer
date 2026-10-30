@@ -19,7 +19,8 @@ or `python3 -m http.server` and open `index.html`.
 
 - **Pick a solid** in the side panel: all 5 Platonic and 13 Archimedean solids,
   listed with their vertex configuration (e.g. `5.6.6` for the truncated
-  icosahedron).
+  icosahedron). The card at the top spins a preview of the selected solid;
+  hover any entry to preview it without selecting it.
 - **Hover a face** of any solid in the scene to preview the selected solid
   snapped onto it. Only faces with the same number of sides can mate. The
   preview turns red if it would overlap something already placed.

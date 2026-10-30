@@ -149,7 +149,40 @@ function changed() {
   }
 }
 
-// ------------------------------------------------------------ preview
+// ------------------------------------------------------------ solid preview card
+
+const previewEl = $('#preview');
+const previewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+previewEl.append(previewRenderer.domElement);
+const previewScene = new THREE.Scene();
+const previewCamera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+previewCamera.position.set(0, 0, 1.08 / Math.sin(THREE.MathUtils.degToRad(15)));
+previewScene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
+const previewSun = new THREE.DirectionalLight(0xffffff, 1.6);
+previewSun.position.set(0.6, 1, 0.8);
+previewScene.add(previewSun);
+const previewMesh = new THREE.Mesh(undefined, solidMat);
+previewMesh.add(new THREE.LineSegments(undefined, edgeMat));
+previewMesh.rotation.x = 0.4;
+previewScene.add(previewMesh);
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+function showPreview(key) {
+  const g = solidGeometry(key);
+  previewMesh.geometry = g.mesh;
+  previewMesh.children[0].geometry = g.edges;
+  previewMesh.scale.setScalar(1 / buildSolid(key).circumradius); // every solid fills the card
+}
+
+new ResizeObserver(() => {
+  const { clientWidth: w, clientHeight: h } = previewEl;
+  previewRenderer.setSize(w, h, false);
+  previewCamera.aspect = w / h;
+  previewCamera.updateProjectionMatrix();
+}).observe(previewEl);
+
+// ------------------------------------------------------------ placement preview
 
 const ghost = new THREE.Mesh(undefined, ghostMat);
 const ghostEdges = new THREE.LineSegments(undefined, ghostEdgeMat);
@@ -400,9 +433,23 @@ function buildPicker() {
         .join('');
       btn.innerHTML = `<span class="solid-name">${s.name}</span><span class="solid-meta"><span class="sw">${swatches}</span><code>${vertexConfiguration(s).join('.')}</code></span>`;
       btn.addEventListener('click', () => select(key));
+      btn.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && showCard(key));
+      btn.addEventListener('pointerleave', () => showCard(state.selected));
+      btn.addEventListener('focus', () => showCard(key));
+      btn.addEventListener('blur', () => showCard(state.selected));
       list.append(btn);
     }
   }
+}
+
+// The card at the top of the picker shows the selected solid, or whichever
+// one the pointer or keyboard focus is on, spinning in its own little view.
+function showCard(key) {
+  const s = buildSolid(key);
+  $('#selected-name').textContent = s.name;
+  $('#selected-faces').textContent = describeFaces(s) + (s.chiral ? ' · chiral' : '');
+  $('#selected').toggleAttribute('data-browsing', key !== state.selected);
+  showPreview(key);
 }
 
 function select(key) {
@@ -419,9 +466,8 @@ function select(key) {
 
 function renderPanel() {
   for (const btn of document.querySelectorAll('.solid')) btn.setAttribute('aria-pressed', btn.dataset.key === state.selected);
+  showCard(state.selected);
   const s = buildSolid(state.selected);
-  $('#selected-name').textContent = s.name;
-  $('#selected-faces').textContent = describeFaces(s) + (s.chiral ? ' · chiral' : '');
   $('#start-over').textContent = `Start over with one ${s.name.toLowerCase()}`;
 
   const count = state.instances.length;
@@ -528,7 +574,11 @@ function resize() {
 new ResizeObserver(resize).observe(stage);
 resize();
 
+const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
   controls.update();
   renderer.render(scene, camera);
+  if (!reducedMotion.matches) previewMesh.rotation.y += dt * 0.5;
+  previewRenderer.render(previewScene, previewCamera);
 });

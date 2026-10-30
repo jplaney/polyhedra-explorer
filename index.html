@@ -99,9 +99,19 @@
     border-radius: 6px;
     padding: 10px 12px;
     background: var(--paper);
+    position: sticky;
+    top: -8px; /* stays in view while browsing the list below */
+    z-index: 1;
+    box-shadow: 0 6px 12px -8px rgb(0 0 0 / 0.25);
   }
   .selected strong { display: block; font: 500 14px/1.2 var(--display); }
   .selected span { color: var(--muted); font-size: 13px; }
+  .selected[data-browsing] strong::after {
+    content: "preview"; margin-left: 8px; vertical-align: 2px;
+    font: 500 10px var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  }
+  .preview { height: 160px; margin: -4px -6px 6px; }
+  .preview canvas { display: block; width: 100%; height: 100%; }
 
   .family { font-size: 12px; color: var(--muted); margin: 4px 0 -4px; }
   .picker { display: grid; grid-template-columns: 1fr; gap: 2px; }
@@ -220,6 +230,8 @@
     }
     .hud { left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: 10px; }
     .keys { display: none; }
+    .selected { position: static; box-shadow: none; }
+    .preview { height: 120px; }
   }
 </style>
 <script type="importmap">
@@ -240,7 +252,8 @@
 
     <section aria-labelledby="attach-h">
       <h2 id="attach-h">Solid to attach</h2>
-      <div class="selected">
+      <div class="selected" id="selected">
+        <div class="preview" id="preview" aria-hidden="true"></div>
         <strong id="selected-name">Truncated icosahedron</strong>
         <span id="selected-faces">12 pentagons, 20 hexagons</span>
       </div>
