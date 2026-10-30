@@ -26,10 +26,11 @@ or `python3 -m http.server` and open `index.html`.
 - **Hover a face** of any solid in the scene to preview the selected solid
   snapped onto it. Only faces with the same number of sides can mate. The
   preview turns red if it would overlap something already placed.
-- **Click** to place it. `R` / `Shift+R` (or the ‹ › buttons) cycle through the
+- **Click** to place it. `R` / `E` (or the ‹ › buttons) cycle through the
   distinct orientations for that face; symmetric duplicates are removed, and
   for chiral solids (the two snubs) both mirror images are offered.
-- **Shift-click** removes a solid, `Z` undoes, `F` fits everything in view.
+- **Hold Shift** (or Alt) to switch to removing: the solid under the cursor
+  turns red, and clicking removes it. `Z` undoes, `F` fits everything in view.
 - **Grow a lattice** copies every solid across each face of the chosen types,
   repeating for N generations and skipping copies that would overlap:
   - *Mirror across face* reflects the solid through the shared face.
