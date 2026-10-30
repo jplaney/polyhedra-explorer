@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SOLIDS, FAMILIES, POLYGON_NAMES, buildSolid, describeFaces, vertexConfiguration } from './geometry.js';
 import { IDENTITY, makeInstance, snapOptions, SpatialIndex, grow, faceVertices } from './snap.js';
 import { JOHNSON_GROUPS } from './johnson.js';
+import { edgeFan, gapPlacements, angleLibrary, exactFills, toDegrees, ANGLE_TOLERANCE } from './edges.js';
 
 const MAX_SOLIDS = 1500;
 const STORAGE_KEY = 'polyhedra-explorer:v1';
@@ -114,6 +115,9 @@ const state = {
   index: new SpatialIndex(),
   hover: null, // { inst, fi, options: [{ T, blocked }], choice }
   removal: null, // instance a click would remove while Shift or Alt is held
+  edgeMode: false, // the edge tool is on: the pointer measures edges
+  edgeHover: null, // { inst, a, b } edge under the pointer
+  edge: null, // { a, b } edge being inspected, with its current fan
   allowOverlap: false,
   undo: [],
 };
@@ -153,6 +157,7 @@ function checkpoint() {
 function changed() {
   clearHover();
   renderPanel();
+  if (state.edge) refreshEdge();
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ selected: state.selected, scene: snapshot() }));
   } catch {
@@ -214,11 +219,14 @@ doomed.visible = false;
 scene.add(doomed);
 
 function clearHover() {
-  state.hover = null;
   state.removal = null;
-  ghost.visible = false;
-  highlight.visible = false;
   doomed.visible = false;
+  highlight.visible = false;
+  setEdgeHover(null);
+  if (!state.edge) {
+    state.hover = null;
+    ghost.visible = false;
+  }
   renderStatus();
 }
 
@@ -276,6 +284,7 @@ function cycleOrientation(step) {
   if (!h || h.options.length < 2) return;
   h.choice = (h.choice + step + h.options.length) % h.options.length;
   showGhost();
+  if (state.edge) drawFan();
 }
 
 // ------------------------------------------------------------ picking
@@ -290,7 +299,7 @@ function pick(clientX, clientY) {
   const hit = raycaster.intersectObjects(solidsGroup.children, false)[0];
   if (!hit) return null;
   const inst = hit.object.userData.inst;
-  return { inst, fi: solidGeometry(inst.key).triFace[hit.faceIndex] };
+  return { inst, fi: solidGeometry(inst.key).triFace[hit.faceIndex], point: hit.point.toArray() };
 }
 
 function hoverAt(clientX, clientY, removing = pointer.removing) {
@@ -300,6 +309,7 @@ function hoverAt(clientX, clientY, removing = pointer.removing) {
     if (state.removal !== p.inst) showRemoval(p.inst);
     return;
   }
+  if (state.edgeMode) return hoverEdge(p);
   const h = state.hover;
   if (h && h.inst === p.inst && h.fi === p.fi) return;
   setHover(p.inst, p.fi);
@@ -364,6 +374,11 @@ canvas.addEventListener('pointerup', (e) => {
     return frame();
   }
   if (e.shiftKey || e.altKey) return removeAt(e.clientX, e.clientY);
+  if (state.edgeMode) {
+    const p = pick(e.clientX, e.clientY);
+    const edge = p && nearestEdge(p);
+    return edge ? selectEdge(edge.a, edge.b) : clearEdge();
+  }
   if (e.pointerType === 'touch') {
     // First tap previews, a second tap on the same face places.
     const p = pick(e.clientX, e.clientY);
@@ -397,8 +412,266 @@ window.addEventListener('keydown', (e) => {
     undo();
   } else if (k === 'f') {
     frame();
+  } else if (k === 'g') {
+    setEdgeMode(!state.edgeMode);
+  } else if (k === 'escape' && state.edgeMode) {
+    if (state.edge) clearEdge();
+    else setEdgeMode(false);
+  } else if (k === 'enter' && state.edge) {
+    e.preventDefault();
+    place();
   } else if ((k === 'delete' || k === 'backspace') && pointer.inside) {
     removeAt(pointer.x, pointer.y);
+  }
+});
+
+// ------------------------------------------------------------ edge angles
+
+const degrees = (radians) => `${toDegrees(radians).toFixed(2)}°`;
+const facePair = (inst, faces) =>
+  faces.map((fi) => inst.faces[fi].sides).sort((x, y) => x - y).map(polygon).join('–');
+
+const markerGeometry = new THREE.CylinderGeometry(1, 1, 1, 12);
+const edgeMarker = (token) => {
+  const m = new THREE.Mesh(markerGeometry, new THREE.MeshBasicMaterial({ depthTest: false, transparent: true }));
+  m.userData.token = token;
+  m.renderOrder = 3;
+  m.visible = false;
+  scene.add(m);
+  return m;
+};
+const hoverMarker = edgeMarker('--hilite');
+const selectedMarker = edgeMarker('--warn');
+const fanGroup = new THREE.Group();
+fanGroup.matrixAutoUpdate = false;
+scene.add(fanGroup);
+
+function placeMarker(marker, a, b, radius) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
+  marker.position.copy(A).add(B).multiplyScalar(0.5);
+  marker.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+  marker.scale.set(radius, A.distanceTo(B), radius);
+  marker.material.color.set(cssVar(marker.userData.token));
+  marker.visible = true;
+}
+
+// The edge of the picked face nearest to the hit point.
+function nearestEdge({ inst, fi, point }) {
+  const verts = faceVertices(inst, fi);
+  let best = null;
+  verts.forEach((a, i) => {
+    const b = verts[(i + 1) % verts.length];
+    const ab = new THREE.Vector3(...b).sub(new THREE.Vector3(...a));
+    const t = THREE.MathUtils.clamp(new THREE.Vector3(...point).sub(new THREE.Vector3(...a)).dot(ab) / ab.lengthSq(), 0, 1);
+    const d = new THREE.Vector3(...a).addScaledVector(ab, t).distanceTo(new THREE.Vector3(...point));
+    if (!best || d < best.d) best = { d, a, b };
+  });
+  return best;
+}
+
+function setEdgeHover(eh) {
+  state.edgeHover = eh;
+  if (eh) placeMarker(hoverMarker, eh.a, eh.b, 0.022);
+  else hoverMarker.visible = false;
+}
+
+function hoverEdge(p) {
+  const { a, b } = nearestEdge(p);
+  const eh = state.edgeHover;
+  if (eh && eh.a === a && eh.b === b) return;
+  const fan = edgeFan([p.inst], a, b);
+  const w = fan.wedges[0];
+  setEdgeHover({ inst: p.inst, a, b, angle: w.size, between: facePair(p.inst, [w.startFace, w.endFace]) });
+  renderStatus();
+}
+
+function setEdgeMode(on) {
+  state.edgeMode = on;
+  $('#edge-mode').setAttribute('aria-pressed', on);
+  if (!on) clearEdge();
+  clearHover();
+  if (on && pointer.inside) hoverAt(pointer.x, pointer.y);
+}
+
+function selectEdge(a, b) {
+  state.edge = { a, b };
+  setEdgeHover(null);
+  refreshEdge();
+}
+
+function clearEdge() {
+  state.edge = null;
+  state.hover = null;
+  ghost.visible = false;
+  selectedMarker.visible = false;
+  clearFan();
+  $('#edge-card').hidden = true;
+  renderStatus();
+}
+
+// Recompute the fan around the inspected edge and offer the selected solid
+// for its largest gap.
+function refreshEdge() {
+  const { a, b } = state.edge;
+  const mid = a.map((x, i) => (x + b[i]) / 2);
+  const fan = edgeFan(state.index.near(mid, 0), a, b);
+  if (!fan.wedges.length) return clearEdge();
+  const gap = fan.gaps.reduce((x, y) => (y.size > x.size ? y : x));
+  state.edge.fan = fan;
+  state.edge.gap = gap.size > ANGLE_TOLERANCE ? gap : null;
+
+  if (state.edge.gap) {
+    const options = gapPlacements(state.selected, gap, fan.frame).map((o) => ({
+      ...o,
+      blocked: o.angle > gap.size + ANGLE_TOLERANCE || state.index.collides(o.cand),
+    }));
+    const free = options.findIndex((o) => !o.blocked);
+    state.hover = { inst: gap.after.inst, fi: gap.after.endFace, options, choice: Math.max(free, 0) };
+  } else state.hover = null;
+
+  placeMarker(selectedMarker, a, b, 0.03);
+  showGhost();
+  drawFan();
+}
+
+function clearFan() {
+  for (const m of fanGroup.children) {
+    m.geometry.dispose();
+    m.material.dispose();
+  }
+  fanGroup.clear();
+}
+
+function drawFan() {
+  const { fan } = state.edge;
+  const { mid, u, w, axis } = fan.frame;
+  clearFan();
+  fanGroup.matrix.makeBasis(new THREE.Vector3(...u), new THREE.Vector3(...w), new THREE.Vector3(...axis));
+  fanGroup.matrix.setPosition(...mid);
+  fanGroup.matrixWorldNeedsUpdate = true;
+  const material = (token, opacity) =>
+    new THREE.MeshBasicMaterial({
+      color: cssVar(token), transparent: true, opacity, side: THREE.DoubleSide, depthTest: false, depthWrite: false,
+    });
+  const sector = (start, size, token, opacity, outer) => {
+    if (size <= ANGLE_TOLERANCE) return;
+    const geometry = new THREE.RingGeometry(0.04, outer, Math.max(2, Math.ceil(size / 0.05)), 1, start, size);
+    const mesh = new THREE.Mesh(geometry, material(token, opacity));
+    mesh.renderOrder = 2;
+    fanGroup.add(mesh);
+  };
+  const spokes = (angles, token, outer) => {
+    const pts = angles.flatMap((t) => [new THREE.Vector3(0, 0, 0), new THREE.Vector3(outer * Math.cos(t), outer * Math.sin(t), 0)]);
+    const lines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: cssVar(token), depthTest: false }));
+    lines.renderOrder = 3;
+    fanGroup.add(lines);
+  };
+  // Solids: faint wedges with crisp edges. Gaps: a strong colour no face
+  // uses, reaching further out so even a sliver shows.
+  fan.wedges.forEach((wg, i) => sector(wg.start, wg.size, i % 2 ? '--fan-b' : '--fan-a', 0.3, 0.6));
+  spokes(fan.wedges.flatMap((wg) => [wg.start, wg.start + wg.size]), '--fan-a', 0.6);
+  for (const g of fan.gaps) {
+    if (g.size === 0) continue;
+    const token = g.size < 0 ? '--blocked' : '--gap';
+    sector(g.start, Math.abs(g.size), token, 0.55, 0.9);
+    spokes([g.start, g.start + g.size], token, 0.9);
+  }
+  // What the previewed solid would take, when it fits by angle.
+  const h = state.hover;
+  const opt = h && state.edge.gap && h.options[h.choice];
+  if (opt && opt.angle <= state.edge.gap.size + ANGLE_TOLERANCE)
+    sector(state.edge.gap.start, opt.angle, opt.blocked ? '--blocked' : '--ok', 0.5, 0.75);
+}
+
+let library = null;
+const rank = (key) => ORDER.indexOf(key);
+
+function renderEdgeCard() {
+  const { fan, gap } = state.edge;
+  const card = $('#edge-card');
+  card.hidden = false;
+  const first = fan.wedges[0];
+  $('#edge-title').textContent = `${facePair(first.inst, [first.startFace, first.endFace])} edge`;
+
+  $('#edge-rows').innerHTML = fan.wedges
+    .map((wg, i) => `<li><i class="${i % 2 ? 'fan-b' : 'fan-a'}"></i><span>${wg.inst.solid.name}</span><b>${degrees(wg.size)}</b></li>`)
+    .join('');
+
+  const overlap = fan.gaps.filter((g) => g.size < 0).reduce((s, g) => s - g.size, 0);
+  const open = fan.gaps.filter((g) => g.size > 0).reduce((s, g) => s + g.size, 0);
+  const total = $('#edge-total');
+  total.dataset.state = overlap ? 'blocked' : open ? 'warn' : 'ok';
+  total.innerHTML = overlap
+    ? `<span>Overlap</span><b>${degrees(overlap)}</b>`
+    : open
+      ? `<span>Gap</span><b>${degrees(open)}</b>`
+      : '<span>Closed</span><b>360.00°</b>';
+  $('#edge-filled').textContent = `${fan.wedges.length} solid${fan.wedges.length > 1 ? 's' : ''} · ${degrees(fan.filled)} filled`;
+
+  const sel = buildSolid(state.selected);
+  const h = state.hover;
+  const add = $('#edge-add');
+  add.textContent = `Add ${sel.name.toLowerCase()}`;
+  add.disabled = !h || !h.options.length;
+  $('#edge-fill').disabled = add.disabled;
+  const opt = h && h.options[h.choice];
+  const fit = $('#edge-fit');
+  if (!gap) fit.textContent = 'Nothing more fits around this edge.';
+  else if (!h || !h.options.length)
+    fit.textContent = `A ${sel.name.toLowerCase()} has no ${polygon(gap.after.inst.faces[gap.after.endFace].sides)} face to put against this side of the gap.`;
+  else if (opt.angle > gap.size + ANGLE_TOLERANCE)
+    fit.textContent = `Needs ${degrees(opt.angle)}, but the gap is ${degrees(gap.size)}.`;
+  else if (gap.size - opt.angle < ANGLE_TOLERANCE) fit.textContent = `Takes ${degrees(opt.angle)} and closes the edge exactly.`;
+  else
+    fit.textContent = `Takes ${degrees(opt.angle)}, leaving ${degrees(gap.size - opt.angle)}` + (opt.blocked ? ', but it hits another solid.' : '.');
+
+  // Combinations from the whole library whose angles close the gap.
+  const list = $('#edge-suggest');
+  if (!gap) return void (list.innerHTML = '');
+  library ??= angleLibrary(ORDER);
+  const fills = exactFills(gap.size, library, { rank });
+  list.innerHTML = fills.length
+    ? `<p>Closes the gap exactly, by angle. Faces must match too, so not all of these can snap on here.</p><ul>${fills.map(describeFill).join('')}</ul>`
+    : '<p>No combination of up to three solids closes this gap exactly.</p>';
+}
+
+function describeFill(combo) {
+  const counts = new Map();
+  for (const e of combo) counts.set(e, (counts.get(e) || 0) + 1);
+  const parts = [...counts].map(([e, n]) => {
+    const [key] = [...e.keys].sort((x, y) => rank(x) - rank(y));
+    const others = e.keys.length - 1;
+    return `${n > 1 ? `${n} × ` : ''}<button type="button" class="link" data-key="${key}">${SOLIDS[key].name}</button>` +
+      `${others ? ` <span class="muted">or ${others} other${others > 1 ? 's' : ''}</span>` : ''} <span class="muted">${degrees(e.angle)}</span>`;
+  });
+  return `<li>${parts.join(' + ')}</li>`;
+}
+
+// Keep adding the selected solid into the gap while it fits.
+function fillEdge() {
+  checkpoint();
+  let added = 0;
+  for (let i = 0; i < 24 && state.edge?.gap && state.instances.length < MAX_SOLIDS; i++) {
+    const opt = state.hover?.options.find((o) => !o.blocked);
+    if (!opt) break;
+    addInstance(makeInstance(state.selected, opt.T));
+    added++;
+    refreshEdge();
+  }
+  if (!added) {
+    state.undo.pop();
+    return toast(`No ${buildSolid(state.selected).name.toLowerCase()} fits into this gap.`);
+  }
+  changed();
+  const left = state.edge?.gap ? `${degrees(state.edge.gap.size)} left` : 'the edge is closed';
+  toast(`Added ${added} solid${added > 1 ? 's' : ''}; ${left}.`);
+}
+
+$('#edge-suggest').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-key]');
+  if (btn) {
+    select(btn.dataset.key);
+    revealSelected();
   }
 });
 
@@ -575,7 +848,8 @@ function showCard(key) {
 function select(key) {
   state.selected = key;
   const h = state.hover;
-  if (h) setHover(h.inst, h.fi);
+  if (state.edge) refreshEdge();
+  else if (h) setHover(h.inst, h.fi);
   renderPanel();
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ selected: key, scene: snapshot() }));
@@ -628,6 +902,19 @@ function renderStatus() {
     status.textContent = `Click to remove this ${state.removal.solid.name.toLowerCase()}.`;
     return;
   }
+  if (state.edgeMode && !state.edge) {
+    const eh = state.edgeHover;
+    status.textContent = eh
+      ? `${eh.between} edge of the ${eh.inst.solid.name.toLowerCase()}: ${degrees(eh.angle)}. Click to see what fits around it.`
+      : 'Hover an edge to measure its dihedral angle. Click it to see what fits around it.';
+    return;
+  }
+  if (state.edge) renderEdgeCard();
+  if (state.edge && !h) {
+    status.dataset.state = 'ok';
+    status.textContent = 'This edge is closed: the solids around it fill 360°. Click another edge, or press Esc.';
+    return;
+  }
   if (!h) {
     status.textContent = `Hover a face to preview a ${sel.name.toLowerCase()} there. Click to snap it on, or hold Shift to remove a solid.`;
     return;
@@ -640,7 +927,9 @@ function renderStatus() {
   }
   const opt = h.options[h.choice];
   status.dataset.state = opt.blocked ? (state.allowOverlap ? 'warn' : 'blocked') : 'ok';
-  status.textContent = `${sel.name} on ${polygon(n)}` + (opt.blocked ? ' · overlaps another solid' : ' · fits');
+  status.textContent = state.edge
+    ? `${sel.name} into the gap` + (opt.blocked ? ' · overlaps' : ' · fits') + '. Enter adds it, R/E change orientation, Esc is done.'
+    : `${sel.name} on ${polygon(n)}` + (opt.blocked ? ' · overlaps another solid' : ' · fits');
   if (h.options.length > 1) {
     orient.hidden = false;
     $('#orient-label').textContent = `${h.choice + 1} / ${h.options.length}`;
@@ -659,6 +948,10 @@ $('#allow-overlap').addEventListener('change', (e) => {
   state.allowOverlap = e.target.checked;
   showGhost();
 });
+$('#edge-mode').addEventListener('click', () => setEdgeMode(!state.edgeMode));
+$('#edge-close').addEventListener('click', clearEdge);
+$('#edge-add').addEventListener('click', place);
+$('#edge-fill').addEventListener('click', fillEdge);
 $('#show-edges').addEventListener('change', (e) => {
   edgeMat.visible = e.target.checked;
 });
