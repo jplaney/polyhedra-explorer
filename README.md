@@ -1,10 +1,16 @@
 # Polyhedra Explorer
 
-Snap Platonic and Archimedean solids together face to face in the browser, and
-grow them into lattices. Inspired by George Hart's
+**Try it: https://jplaney.github.io/polyhedra-explorer/**
+
+Snap Platonic, Archimedean and Johnson solids, prisms and antiprisms together
+face to face in the browser, grow them into lattices, and measure the angles
+around their edges. Inspired by George Hart's
 [Virtual Polyhedra](https://www.georgehart.com/virtual-polyhedra/archimedean-index.html).
 
-## Run it
+The site is served by GitHub Pages from the `main` branch, so every merge to
+`main` updates it within a minute or two.
+
+## Run it locally
 
 It's a static page with no build step (three.js loads from a CDN), but ES
 modules need to be served over HTTP:
