@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { SOLIDS, FAMILIES, POLYGON_NAMES, buildSolid, describeFaces, vertexConfiguration } from './geometry.js';
+import { SOLIDS, FAMILIES, buildSolid, describeFaces, faceNoun, vertexConfiguration } from './geometry.js';
 import { IDENTITY, makeInstance, snapOptions, SpatialIndex, grow, faceVertices } from './snap.js';
 import { JOHNSON_GROUPS } from './johnson.js';
+import './catalan.js';
 import { edgeFan, gapPlacements, angleLibrary, exactFills, toDegrees, ANGLE_TOLERANCE } from './edges.js';
 
 const MAX_SOLIDS = 1500;
@@ -11,7 +12,6 @@ const FACE_TOKENS = { 3: '--tri', 4: '--sq', 5: '--pent', 6: '--hex', 8: '--oct'
 
 const $ = (sel) => document.querySelector(sel);
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const polygon = (n) => POLYGON_NAMES[n] ?? `${n}-gon`;
 // "a cube", "an octahedron": every solid name here starts with a letter
 // whose sound matches its spelling.
 const capitalize = (text) => text[0].toUpperCase() + text.slice(1);
@@ -433,7 +433,7 @@ window.addEventListener('keydown', (e) => {
 
 const degrees = (radians) => `${toDegrees(radians).toFixed(2)}°`;
 const facePair = (inst, faces) =>
-  faces.map((fi) => inst.faces[fi].sides).sort((x, y) => x - y).map(polygon).join('–');
+  faces.map((fi) => inst.faces[fi].sides).sort((x, y) => x - y).map((n) => faceNoun(inst.solid, n)[0]).join('–');
 
 const markerGeometry = new THREE.CylinderGeometry(1, 1, 1, 12);
 const edgeMarker = (token) => {
@@ -622,7 +622,7 @@ function renderEdgeCard() {
   const fit = $('#edge-fit');
   if (!gap) fit.textContent = 'Nothing more fits around this edge.';
   else if (!h || !h.options.length)
-    fit.textContent = `${capitalize(aOrAn(sel.name.toLowerCase()))} has no ${polygon(gap.after.inst.faces[gap.after.endFace].sides)} face to put against this side of the gap.`;
+    fit.textContent = `${capitalize(aOrAn(sel.name.toLowerCase()))} has no face that matches the ${faceNoun(gap.after.inst.solid, gap.after.inst.faces[gap.after.endFace].sides)[0]} on this side of the gap.`;
   else if (opt.angle > gap.size + ANGLE_TOLERANCE)
     fit.textContent = `Needs ${degrees(opt.angle)}, but the gap is ${degrees(gap.size)}.`;
   else if (gap.size - opt.angle < ANGLE_TOLERANCE) fit.textContent = `Takes ${degrees(opt.angle)} and closes the edge exactly.`;
@@ -759,7 +759,7 @@ function solidButton(key) {
   btn.id = `solid-${key}`;
   btn.dataset.key = key;
   btn.dataset.search = `${s.name} ${label}`.toLowerCase();
-  btn.title = describeFaces(s);
+  btn.title = describeFaces(s) + (s.dual ? `; dual of the ${SOLIDS[s.dual].name.toLowerCase()}` : '');
   const swatches = Object.keys(s.faceCounts)
     .map((n) => `<i style="background:var(${FACE_TOKENS[n]})"></i>`)
     .join('');
@@ -844,7 +844,11 @@ function applyFilter() {
 function showCard(key) {
   const s = buildSolid(key);
   $('#selected-name').textContent = s.name;
-  $('#selected-faces').textContent = (s.label ? `${s.label} · ` : '') + describeFaces(s) + (s.chiral ? ' · chiral' : '');
+  $('#selected-faces').textContent =
+    (s.label ? `${s.label} · ` : '') +
+    describeFaces(s) +
+    (s.chiral ? ' · chiral' : '') +
+    (s.dual ? ` · dual of the ${SOLIDS[s.dual].name.toLowerCase()}` : '');
   $('#selected').toggleAttribute('data-browsing', key !== state.selected);
   showPreview(key);
 }
@@ -872,17 +876,23 @@ function renderPanel() {
   $('#count').textContent = `${count} solid${count === 1 ? '' : 's'}`;
   $('#undo').disabled = !state.undo.length;
 
-  // Face types available to grow across: those present in the scene.
-  const present = new Set();
-  for (const key of new Set(state.instances.map((i) => i.key)))
-    for (const n of Object.keys(buildSolid(key).faceCounts)) present.add(Number(n));
+  // Face types available to grow across: those present in the scene, by side
+  // count, named for every kind present ("squares, rhombi").
+  const present = new Map();
+  for (const key of new Set(state.instances.map((i) => i.key))) {
+    const solid = buildSolid(key);
+    for (const n of Object.keys(solid.faceCounts).map(Number)) {
+      if (!present.has(n)) present.set(n, new Set());
+      present.get(n).add(faceNoun(solid, n)[1]);
+    }
+  }
   const box = $('#grow-sides');
   const prev = new Map([...box.querySelectorAll('input')].map((i) => [Number(i.value), i.checked]));
   box.innerHTML = '';
-  for (const n of [...present].sort((a, b) => a - b)) {
+  for (const n of [...present.keys()].sort((a, b) => a - b)) {
     const label = document.createElement('label');
     label.className = 'chip';
-    label.innerHTML = `<input type="checkbox" id="grow-${n}" value="${n}" ${prev.get(n) ?? true ? 'checked' : ''}><i style="background:var(${FACE_TOKENS[n]})"></i>${polygon(n)}s`;
+    label.innerHTML = `<input type="checkbox" id="grow-${n}" value="${n}" ${prev.get(n) ?? true ? 'checked' : ''}><i style="background:var(${FACE_TOKENS[n]})"></i>${[...present.get(n)].join(', ')}`;
     box.append(label);
   }
   $('#grow').disabled = !present.size;
@@ -926,14 +936,14 @@ function renderStatus() {
   const n = h.inst.faces[h.fi].sides;
   if (!h.options.length) {
     status.dataset.state = 'blocked';
-    status.textContent = `${capitalize(aOrAn(sel.name.toLowerCase()))} has no ${polygon(n)} faces to match this one.`;
+    status.textContent = `${capitalize(aOrAn(sel.name.toLowerCase()))} has no face that matches this ${faceNoun(h.inst.solid, n)[0]}.`;
     return;
   }
   const opt = h.options[h.choice];
   status.dataset.state = opt.blocked ? (state.allowOverlap ? 'warn' : 'blocked') : 'ok';
   status.textContent = state.edge
     ? `${sel.name} into the gap` + (opt.blocked ? ' · overlaps' : ' · fits') + '. Enter adds it, R/E change orientation, Esc is done.'
-    : `${sel.name} on ${polygon(n)}` + (opt.blocked ? ' · overlaps another solid' : ' · fits');
+    : `${sel.name} on ${faceNoun(h.inst.solid, n)[0]}` + (opt.blocked ? ' · overlaps another solid' : ' · fits');
   if (h.options.length > 1) {
     orient.hidden = false;
     $('#orient-label').textContent = `${h.choice + 1} / ${h.options.length}`;

@@ -345,6 +345,33 @@ export function findFaces(vertices) {
   return { faces: result, edges, edgeLength: edgeLen, vertexDegree: neighbors[0].length };
 }
 
+// Faces from vertex-index lists: centre, outward normal, and vertices put
+// counter-clockwise as seen from outside.
+function facesFromLists(vertices, lists) {
+  const faces = lists.map((list) => {
+    const verts = list.slice();
+    const center = scale(verts.reduce((s, i) => add(s, vertices[i]), [0, 0, 0]), 1 / verts.length);
+    let normal = normalize(cross(sub(vertices[verts[1]], vertices[verts[0]]), sub(vertices[verts[2]], vertices[verts[1]])));
+    if (dot(normal, center) < 0) {
+      verts.reverse();
+      normal = scale(normal, -1);
+    }
+    return { verts, normal, center, sides: verts.length };
+  });
+  const seen = new Set();
+  const edges = [];
+  for (const f of faces)
+    f.verts.forEach((a, i) => {
+      const b = f.verts[(i + 1) % f.sides];
+      const key = a < b ? `${a},${b}` : `${b},${a}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        edges.push(a < b ? [a, b] : [b, a]);
+      }
+    });
+  return { faces, edges };
+}
+
 // --------------------------------------------------------------- builder
 
 const cache = new Map();
@@ -354,13 +381,22 @@ export function buildSolid(key) {
   const def = SOLIDS[key];
   if (!def) throw new Error(`Unknown solid: ${key}`);
 
+  // Solids with regular faces are given as vertices, scaled to unit edges, and
+  // their faces found by the hull pass. Others (the Catalan solids) come with
+  // their faces and are kept at the size given.
+  const given = def.polyhedron?.();
+  let raw = given ? given.vertices : def.vertices();
   // Centre on the vertex centroid (a no-op for the symmetric solids).
-  let raw = def.vertices();
   const c = scale(raw.reduce(add, [0, 0, 0]), 1 / raw.length);
   raw = raw.map((v) => sub(v, c));
-  const hull = findFaces(raw);
-  const vertices = raw.map((v) => scale(v, 1 / hull.edgeLength));
-  const { faces, edges, vertexDegree } = findFaces(vertices);
+  let vertices, faces, edges, vertexDegree;
+  if (given) {
+    vertices = raw;
+    ({ faces, edges } = facesFromLists(vertices, given.faces));
+  } else {
+    vertices = raw.map((v) => scale(v, 1 / findFaces(raw).edgeLength));
+    ({ faces, edges, vertexDegree } = findFaces(vertices));
+  }
 
   // Sort so faces of the same kind are grouped, largest first.
   faces.sort((a, b) => b.sides - a.sides);
@@ -375,6 +411,8 @@ export function buildSolid(key) {
     chiral: !!def.chiral,
     group: def.group,
     label: def.label,
+    faceName: def.faceName, // e.g. ['rhombus', 'rhombi'] where the faces aren't regular
+    dual: def.dual,
     vertices,
     faces,
     edges,
@@ -413,9 +451,16 @@ export function vertexConfiguration(solid) {
   return candidates[0];
 }
 
+/** What a solid's faces with `sides` sides are called: ['square', 'squares']. */
+export function faceNoun(solid, sides) {
+  if (solid.faceName) return solid.faceName;
+  const name = POLYGON_NAMES[sides] ?? `${sides}-gon`;
+  return [name, `${name}s`];
+}
+
 export function describeFaces(solid) {
   return Object.entries(solid.faceCounts)
     .sort((a, b) => a[0] - b[0])
-    .map(([sides, count]) => `${count} ${POLYGON_NAMES[sides] ?? `${sides}-gon`}${count > 1 ? 's' : ''}`)
+    .map(([sides, count]) => `${count} ${faceNoun(solid, sides)[count > 1 ? 1 : 0]}`)
     .join(', ');
 }

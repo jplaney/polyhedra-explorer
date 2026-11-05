@@ -2,8 +2,8 @@
 
 **Try it: https://jplaney.github.io/polyhedra-explorer/**
 
-Snap Platonic, Archimedean and Johnson solids, prisms and antiprisms together
-face to face in the browser, grow them into lattices, and measure the angles
+Snap Platonic, Archimedean, Catalan and Johnson solids, prisms and antiprisms
+together face to face in the browser, grow them into lattices, and measure the angles
 around their edges. Inspired by George Hart's
 [Virtual Polyhedra](https://www.georgehart.com/virtual-polyhedra/archimedean-index.html).
 
@@ -23,16 +23,22 @@ or `python3 -m http.server` and open `index.html`.
 
 ## Using it
 
-- **Pick a solid** in the side panel: all 5 Platonic and 13 Archimedean solids,
-  prisms and antiprisms on triangles through decagons (the square prism is the
-  cube and the triangular antiprism the octahedron, so they're listed once),
-  and all 92 Johnson solids, grouped the way Johnson grouped them. Type in the
-  filter box to search by name or J-number. Each solid is listed with their vertex configuration (e.g. `5.6.6` for the truncated
-  icosahedron). The card at the top spins a preview of the selected solid;
+- **Pick a solid** in the side panel: all 5 Platonic and 13 Archimedean
+  solids; the 13 Catalan solids, their duals; prisms and antiprisms on
+  triangles through decagons (the square prism is the cube and the triangular
+  antiprism the octahedron, so they're listed once); and all 92 Johnson
+  solids, grouped the way Johnson grouped them. Type in the filter box to
+  search by name or J-number. Each solid is listed with its vertex
+  configuration (`5.6.6` for the truncated icosahedron), its face
+  configuration for the Catalan solids (`V5.6.6` for the pentakis
+  dodecahedron, whose faces each have corners where 5, 6 and 6 faces meet), or
+  its J-number. The card at the top spins a preview of the selected solid;
   hover any entry to preview it without selecting it.
 - **Hover a face** of any solid in the scene to preview the selected solid
-  snapped onto it. Only faces with the same number of sides can mate. The
-  preview turns red if it would overlap something already placed.
+  snapped onto it. Two faces mate only if they match corner for corner: any
+  two regular faces with the same number of sides, or two congruent Catalan
+  faces (a rhombus never fits a square). The preview turns red if it would
+  overlap something already placed.
 - **Click** to place it. `R` / `E` (or the ‹ › buttons) cycle through the
   distinct orientations for that face; symmetric duplicates are removed, and
   for chiral solids (the two snubs) both mirror images are offered.
@@ -42,8 +48,8 @@ or `python3 -m http.server` and open `index.html`.
   repeating for N generations and skipping copies that would overlap:
   - *Mirror across face* reflects the solid through the shared face.
   - *Slide opposite face over* translates the solid so its parallel opposite
-    face lands on the shared face. Cubes, truncated octahedra or hexagonal
-    prisms across all faces tile space this way.
+    face lands on the shared face. Cubes, truncated octahedra, hexagonal
+    prisms or rhombic dodecahedra across all faces tile space this way.
 
 ### Edge angles
 
@@ -77,6 +83,8 @@ the browser's local storage.
 - `src/geometry.js`: vertex recipes for the uniform solids (the snubs are solved
   numerically), a hull pass that recovers the polygonal faces, and vertex
   configurations. No dependencies.
+- `src/catalan.js`: the 13 Catalan solids, each built from its Archimedean
+  dual by polar reciprocation in their shared midsphere.
 - `src/johnson.js`: the 92 Johnson solids. 84 are built from pieces
   (pyramids, cupolae and rotundae stacked on prisms and antiprisms, or caps
   added to, removed from or turned on other solids), and every result is

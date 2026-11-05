@@ -99,8 +99,10 @@ function placementKey(key, T) {
 }
 
 /**
- * Every distinct way to attach solid `key` to face `fi` of `inst` so that a
- * face of the same polygon type sits flush against it. Mirror-image
+ * Every distinct way to attach solid `key` to face `fi` of `inst` so that one
+ * of its faces covers that face exactly, corner for corner. (Regular faces
+ * match whenever their side counts do; a rhombus only matches a congruent
+ * rhombus, turned the right way.) Mirror-image
  * placements are included, which only adds new options for chiral solids.
  * When attaching a solid to a copy of itself, the reflection through the
  * shared face (the "natural" mirror-image neighbour) is listed first.
@@ -126,6 +128,11 @@ export function snapOptions(key, inst, fi) {
       if (face.sides !== tf.sides) continue;
       for (const vi of face.verts) {
         const T = compose(alignFace(vertices, face, vi, target), pre);
+        const covers = face.verts.every((v) => {
+          const p = applyTransform(T, solid.vertices[v]);
+          return target.verts.some((q) => distance(p, q) < 1e-6);
+        });
+        if (!covers) continue;
         const k = placementKey(key, T);
         if (!options.has(k)) options.set(k, T);
       }
