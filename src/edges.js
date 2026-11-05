@@ -5,7 +5,7 @@
 // its two faces at that edge). Space closes up around the edge only when the
 // wedges add up to exactly 360°; whatever is left over is the gap.
 
-import { add, sub, scale, dot, cross, normalize, distance, buildSolid, POLYGON_NAMES } from './geometry.js';
+import { add, sub, scale, dot, cross, normalize, distance, buildSolid, faceNoun } from './geometry.js';
 import { makeInstance, snapOptions } from './snap.js';
 
 const TAU = 2 * Math.PI;
@@ -83,8 +83,6 @@ export function dihedralAt(inst, a, b) {
   return edge ? wedgeOf(inst, edgeFrame(a, b), edge).size : null;
 }
 
-const faceName = (n) => POLYGON_NAMES[n] ?? `${n}-gon`;
-
 /** A solid's distinct dihedral angles, each with the face pair it sits between. */
 export function dihedralAngles(key) {
   const s = buildSolid(key);
@@ -96,7 +94,7 @@ export function dihedralAngles(key) {
     const angle = wedgeOf(inst, edgeFrame(a, b), edge).size;
     const sides = edge.faces.map((fi) => s.faces[fi].sides).sort((x, y) => x - y);
     const id = `${toDegrees(angle).toFixed(4)}|${sides}`;
-    if (!found.has(id)) found.set(id, { angle, between: sides.map(faceName).join('–') });
+    if (!found.has(id)) found.set(id, { angle, between: sides.map((n) => faceNoun(s, n)[0]).join('–') });
   }
   return [...found.values()].sort((x, y) => x.angle - y.angle);
 }
