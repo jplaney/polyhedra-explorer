@@ -74,6 +74,25 @@ Click it to inspect it:
 
 `Esc` stops inspecting the edge; `G` turns the tool off.
 
+### Build it: tiles to 3D-print
+
+The **Build it** section lists the tiles the current scene needs (a face two
+solids share is one tile) and exports them as STL files, one per tile shape,
+or all at once as a .zip with a parts list.
+
+Each tile is its face polygon with every edge and corner fully rounded, as if
+swept by a ball. Two tiles roll on each other's rounded edges, so they fold to
+any angle without colliding. A loose ball magnet sits in a pocket centred in
+each edge's rounding; it turns to attract whatever magnet it meets, so any
+edge joins any edge, and neighbouring magnets stay the same short distance
+apart whatever the fold angle.
+
+Tile settings: edge length (measured between edge centre lines), thickness,
+ball magnet size, pocket clearance, and one or two magnets per edge. The panel
+gives the number of magnets to buy and the height to pause each print at to
+drop them in. The defaults (40 mm edges, 7 mm thick, 5 mm balls) suit common
+5 mm neodymium balls; print flat side down.
+
 Faces are coloured by polygon type: triangles amber, squares red, pentagons
 blue, hexagons green, octagons violet, decagons orange. The scene is saved in
 the browser's local storage.
@@ -94,6 +113,9 @@ the browser's local storage.
   after A. Timofeenko's exact solutions.
 - `src/edges.js`: dihedral angles, the fan of solids around an edge and its
   gaps, and the search for angle combinations that close a gap.
+- `src/parts.js`: the parts list, with shared faces counted once.
+- `src/tiles.js`: the printable tile mesh with magnet pockets, binary STL, and
+  a small .zip writer.
 - `src/snap.js`: face-to-face alignment transforms, orientation de-duplication,
   convex overlap testing (separating axis theorem) and lattice growth.
 - `src/main.js`: three.js scene, picking, preview and UI.

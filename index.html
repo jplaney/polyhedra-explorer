@@ -215,6 +215,23 @@
     font-size: 13px; cursor: pointer; background: var(--paper);
   }
   .chip input { margin: 0; accent-color: var(--ink); }
+  .parts { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .parts th, .parts td { text-align: left; padding: 4px 0; border-bottom: 1px solid var(--rule); }
+  .parts thead th { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
+  .parts tfoot th, .parts tfoot td { border-bottom: 0; font-weight: 600; }
+  .parts .num { text-align: right; padding-right: 10px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .parts td:last-child { text-align: right; width: 1%; }
+  .parts .tile-name { display: inline-flex; align-items: center; gap: 6px; }
+  .parts .tile-name i { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.18); }
+  .parts .empty { color: var(--muted); }
+  .btn.small { padding: 3px 8px; font-size: 12px; }
+  .tile-settings { display: flex; flex-direction: column; gap: 8px; }
+  .tile-settings summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 2px 0; }
+  .tile-settings summary:hover { color: var(--ink); }
+  .tile-settings[open] summary { margin-bottom: 8px; }
+  .tile-settings .field + .field { margin-top: 8px; }
+  .note.warn { color: var(--blocked); }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .field { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 13px; }
   select, input[type="number"] {
     font: 13px var(--body); color: var(--ink); background: var(--paper);
@@ -380,6 +397,37 @@
         <input id="grow-gens" type="number" min="1" max="8" value="2">
       </label>
       <button class="btn primary wide" id="grow" type="button">Grow lattice</button>
+    </section>
+
+    <section aria-labelledby="build-h">
+      <h2 id="build-h">Build it</h2>
+      <p class="note">Tiles to 3D-print for this scene. A face two solids share is one tile.</p>
+      <table class="parts">
+        <thead><tr><th scope="col">Tile</th><th scope="col" class="num">Count</th><th scope="col"><span class="visually-hidden">Download</span></th></tr></thead>
+        <tbody id="parts-rows"></tbody>
+        <tfoot><tr><th scope="row">Total</th><td class="num" id="parts-total">0</td><td></td></tr></tfoot>
+      </table>
+      <details class="tile-settings" id="tile-settings">
+        <summary>Tile settings</summary>
+        <label class="field" for="tile-edge">Edge length (mm)
+          <input id="tile-edge" type="number" min="15" max="200" step="1" value="40">
+        </label>
+        <label class="field" for="tile-thickness">Thickness (mm)
+          <input id="tile-thickness" type="number" min="3" max="20" step="0.5" value="7">
+        </label>
+        <label class="field" for="tile-ball">Ball magnet diameter (mm)
+          <input id="tile-ball" type="number" min="2" max="15" step="0.5" value="5">
+        </label>
+        <label class="field" for="tile-clearance">Pocket clearance (mm)
+          <input id="tile-clearance" type="number" min="0" max="1" step="0.05" value="0.2">
+        </label>
+        <label class="field" for="tile-per-edge">Magnets per edge
+          <select id="tile-per-edge"><option value="1">1</option><option value="2">2</option></select>
+        </label>
+      </details>
+      <p class="note" id="build-notes"></p>
+      <p class="note warn" id="build-warning" hidden></p>
+      <button class="btn primary wide" id="download-all" type="button">Download all tiles (.zip)</button>
     </section>
 
     <section aria-labelledby="options-h">

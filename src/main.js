@@ -4,6 +4,8 @@ import { SOLIDS, FAMILIES, buildSolid, describeFaces, faceNoun, vertexConfigurat
 import { IDENTITY, makeInstance, snapOptions, SpatialIndex, grow, faceVertices } from './snap.js';
 import { JOHNSON_GROUPS } from './johnson.js';
 import './catalan.js';
+import { partsList } from './parts.js';
+import { tileDesign, tileTriangles, toSTL, toZip } from './tiles.js';
 import { edgeFan, gapPlacements, angleLibrary, exactFills, toDegrees, ANGLE_TOLERANCE } from './edges.js';
 
 const MAX_SOLIDS = 1500;
@@ -896,8 +898,140 @@ function renderPanel() {
     box.append(label);
   }
   $('#grow').disabled = !present.size;
+  renderParts();
   renderStatus();
 }
+
+// ------------------------------------------------------------ build it: tiles to print
+
+const SETTINGS_KEY = 'polyhedra-explorer:tiles';
+const tileInputs = ['tile-edge', 'tile-thickness', 'tile-ball', 'tile-clearance', 'tile-per-edge'];
+
+function tileOptions() {
+  const num = (id) => Number($(`#${id}`).value);
+  return {
+    edge: num('tile-edge'),
+    thickness: num('tile-thickness'),
+    ballDiameter: num('tile-ball'),
+    clearance: num('tile-clearance'),
+    magnetsPerEdge: num('tile-per-edge'),
+  };
+}
+
+let parts = { types: [], total: 0, shared: 0 };
+const fileName = (t, opts) => `${t.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${opts.edge}mm.stl`;
+const mm = (x) => `${Math.round(x * 10) / 10} mm`;
+
+function renderParts() {
+  parts = partsList(state.instances);
+  const opts = tileOptions();
+  const rows = $('#parts-rows');
+  rows.innerHTML = parts.types.length
+    ? parts.types
+        .map((t, i) => `<tr><td><span class="tile-name"><i style="background:var(${FACE_TOKENS[t.sides] ?? '--muted'})"></i>${t.label}</span></td>` +
+          `<td class="num">${t.count}</td><td><button class="btn small" type="button" data-tile="${i}" title="Download ${fileName(t, opts)}">STL</button></td></tr>`)
+        .join('')
+    : '<tr><td class="empty" colspan="3">Place a solid to see its tiles.</td></tr>';
+  $('#parts-total').textContent = parts.total;
+  $('#download-all').disabled = !parts.total;
+
+  const notes = $('#build-notes');
+  const warning = $('#build-warning');
+  if (!parts.total) {
+    notes.textContent = '';
+    warning.hidden = true;
+    return;
+  }
+  const balls = parts.types.reduce((s, t) => s + t.count * t.sides * opts.magnetsPerEdge, 0);
+  const design = tileDesign(parts.types[0].polygon, opts);
+  notes.textContent =
+    `${parts.total} tile${parts.total > 1 ? 's' : ''}` +
+    (parts.shared ? ` (${parts.shared} shared face${parts.shared > 1 ? 's' : ''} counted once)` : '') +
+    ` and ${balls} ball magnets, ${mm(opts.ballDiameter)}. ` +
+    `Pause each print at about ${mm(design.pauseAt)} to drop a ball into every pocket, then resume. ` +
+    'The edges are rounded, so any edge joins any edge and folds to any angle.';
+  const problems = [];
+  if (design.wall <= 0) problems.push(`A ${mm(opts.ballDiameter)} magnet doesn't fit inside a ${mm(opts.thickness)} tile: use thicker tiles or smaller magnets.`);
+  else if (design.wall < 0.6) problems.push(`The wall around each magnet is only ${mm(design.wall)}: use thicker tiles or smaller magnets.`);
+  const shortest = Math.min(...parts.types.flatMap((t) => t.polygon.map((p, i) => Math.hypot(p[0] - t.polygon[(i + 1) % t.sides][0], p[1] - t.polygon[(i + 1) % t.sides][1])))) * opts.edge;
+  const room = opts.magnetsPerEdge === 2 ? shortest / 2 : shortest;
+  if (room < 2 * design.pocket + 2) problems.push(`Edges of ${mm(shortest)} are too short for ${opts.magnetsPerEdge} magnet${opts.magnetsPerEdge > 1 ? 's' : ''} of ${mm(opts.ballDiameter)}.`);
+  warning.textContent = problems.join(' ');
+  warning.hidden = !problems.length;
+}
+
+const tileSTL = (t, opts) => toSTL(tileTriangles(tileDesign(t.polygon, opts)), t.label);
+
+// Save a file: through the viewer's download prompt inside Claude (which
+// takes .zip but not .stl), else as an ordinary browser download.
+async function saveFile(name, bytes) {
+  const downloads = window.claude?.use ? await window.claude.use('downloads') : null;
+  if (downloads) {
+    const zipped = name.endsWith('.zip') ? { name, bytes } : { name: name.replace(/\.stl$/, '.zip'), bytes: toZip([{ name, data: bytes }]) };
+    try {
+      await downloads.save({ filename: zipped.name, data: new Blob([zipped.bytes]) });
+      toast(`Saved ${zipped.name}.`);
+    } catch (err) {
+      if (err?.code !== 'declined') toast('This view can’t save files. Open the app on its own page to download tiles.');
+    }
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([bytes], { type: name.endsWith('.zip') ? 'application/zip' : 'model/stl' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+function partsText(opts) {
+  const lines = [
+    'Polyhedra Explorer tiles',
+    '',
+    ...parts.types.map((t) => `${String(t.count).padStart(4)} × ${t.label}  (${fileName(t, opts)})`),
+    `${String(parts.total).padStart(4)}   tiles in all`,
+    '',
+    `Edge length ${opts.edge} mm (between edge centre lines), thickness ${opts.thickness} mm.`,
+    `${parts.types.reduce((s, t) => s + t.count * t.sides * opts.magnetsPerEdge, 0)} ball magnets, ${opts.ballDiameter} mm, ${opts.magnetsPerEdge} per edge.`,
+    `Pause each print at about ${mm(tileDesign(parts.types[0].polygon, opts).pauseAt)} and drop a ball into every pocket, then resume.`,
+    'Print flat side down. The balls turn freely, so any edge attracts any other.',
+  ];
+  return new TextEncoder().encode(lines.join('\n') + '\n');
+}
+
+$('#parts-rows').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-tile]');
+  if (!btn) return;
+  const opts = tileOptions();
+  const t = parts.types[Number(btn.dataset.tile)];
+  saveFile(fileName(t, opts), tileSTL(t, opts));
+});
+
+$('#download-all').addEventListener('click', () => {
+  const opts = tileOptions();
+  const files = parts.types.map((t) => ({ name: fileName(t, opts), data: tileSTL(t, opts) }));
+  files.push({ name: 'parts-list.txt', data: partsText(opts) });
+  saveFile(`polyhedra-tiles-${opts.edge}mm.zip`, toZip(files));
+});
+
+// Remember tile settings in this browser.
+try {
+  const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+  if (saved) for (const id of tileInputs) if (saved[id] !== undefined) $(`#${id}`).value = saved[id];
+} catch {
+  // no saved settings
+}
+for (const id of tileInputs)
+  $(`#${id}`).addEventListener('change', () => {
+    renderParts();
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(Object.fromEntries(tileInputs.map((i) => [i, $(`#${i}`).value]))));
+    } catch {
+      // storage unavailable
+    }
+  });
 
 function renderStatus() {
   const h = state.hover;
